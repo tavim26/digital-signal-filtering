@@ -16,17 +16,11 @@ def plot_time_domain_comparison(time, original_signal, filtered_signal, filter_t
     Fereastra 1: Comparatie semnale in domeniul timp
 
     Parameters:
-    -----------
-    time : numpy.ndarray
-        Vector timp
-    original_signal : numpy.ndarray
-        Semnalul original
-    filtered_signal : numpy.ndarray
-        Semnalul filtrat
-    filter_type : str
-        Tipul filtrului
-    cutoff_info : str
-        Informatii despre frecventele de taiere
+    time : Vector timp
+    original_signal : Semnalul original
+    filtered_signal : Semnalul filtrat
+    filter_type : Tipul filtrului
+    cutoff_info : Informatii despre frecventele de taiere
     """
     filter_names = {
         'lowpass': 'Trece-Jos',
@@ -95,7 +89,8 @@ def plot_time_domain_comparison(time, original_signal, filtered_signal, filter_t
         ax.spines['bottom'].set_linewidth(1.5)
 
     plt.tight_layout()
-    plt.show(block=False)  # NU blocheaza - permite alte ferestre
+    plt.show(block=False)
+
 
 
 def plot_frequency_domain_comparison(time, original_signal, filtered_signal, sampling_freq,
@@ -105,18 +100,12 @@ def plot_frequency_domain_comparison(time, original_signal, filtered_signal, sam
 
     Parameters:
     -----------
-    time : numpy.ndarray
-        Vector timp
-    original_signal : numpy.ndarray
-        Semnalul original
-    filtered_signal : numpy.ndarray
-        Semnalul filtrat
-    sampling_freq : float
-        Frecventa de esantionare
-    filter_type : str
-        Tipul filtrului
-    cutoff_info : str
-        Informatii despre frecventele de taiere
+    time : Vector timp
+    original_signal : Semnalul original
+    filtered_signal : Semnalul filtrat
+    sampling_freq : Frecventa de esantionare
+    filter_type : Tipul filtrului
+    cutoff_info : Informatii despre frecventele de taiere
     """
     filter_names = {
         'lowpass': 'Trece-Jos',
@@ -197,7 +186,7 @@ def plot_frequency_domain_comparison(time, original_signal, filtered_signal, sam
         ax.spines['bottom'].set_linewidth(1.5)
 
     plt.tight_layout()
-    plt.show(block=False)  # NU blocheaza
+    plt.show(block=False)
 
 
 def plot_filter_response(frequencies, response, filter_type, cutoff_info):
@@ -206,14 +195,10 @@ def plot_filter_response(frequencies, response, filter_type, cutoff_info):
 
     Parameters:
     -----------
-    frequencies : numpy.ndarray
-        Vector de frecvente
-    response : numpy.ndarray
-        Raspunsul in frecventa
-    filter_type : str
-        Tipul filtrului
-    cutoff_info : str
-        Informatii despre frecventele de taiere
+    frequencies : Vector de frecvente
+    response : Raspunsul in frecventa
+    filter_type : Tipul filtrului
+    cutoff_info : Informatii despre frecventele de taiere
     """
     filter_names = {
         'lowpass': 'Trece-Jos',
@@ -278,12 +263,9 @@ def plot_filter_response(frequencies, response, filter_type, cutoff_info):
         ax.spines['bottom'].set_linewidth(1.5)
 
     plt.tight_layout()
-    plt.show(block=False)  # NU blocheaza
+    plt.show(block=False)
+
 
 
 def show_all_plots():
-    """
-    Functie finala care BLOCHEAZA si tine toate ferestrele deschise
-    TREBUIE apelata la sfarsit pentru a vedea toate graficele
-    """
-    plt.show()  # BLOCHEAZA aici - tine toate ferestrele deschise
+    plt.show()

@@ -82,7 +82,6 @@ Filtrare-Semnale-Digitale/
 │   ├── filters.py        # Implementare filtre digitale
 │   ├── visualization.py  # Functii pentru grafice
 │   └── main.py           # Script principal
-├── tests/                # Teste unitare
 ├── docs/                 # Documentatie
 ├── requirements.txt      # Lista biblioteci necesare
 ├── config.py             # Configurari globale

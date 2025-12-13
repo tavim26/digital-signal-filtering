@@ -10,25 +10,6 @@ def load_signal_from_csv(filepath, time_column=0, signal_column=1, delimiter=','
     """
     Incarca semnal din fisier CSV
 
-    Parameters:
-    -----------
-    filepath : str
-        Calea catre fisierul CSV
-    time_column : int or str
-        Index sau numele coloanei cu timp
-    signal_column : int or str
-        Index sau numele coloanei cu valori semnal
-    delimiter : str
-        Delimitator folosit in CSV (implicit ',')
-
-    Returns:
-    --------
-    time : numpy.ndarray
-        Vector cu valorile de timp
-    signal : numpy.ndarray
-        Vector cu valorile semnalului
-    sampling_frequency : float
-        Frecventa de esantionare calculata
     """
     file_path = Path(filepath)
 
@@ -72,14 +53,6 @@ def save_signal(filepath, time, signal):
     """
     Salveaza semnalul intr-un fisier CSV
 
-    Parameters:
-    -----------
-    filepath : str
-        Calea unde se salveaza fisierul
-    time : numpy.ndarray
-        Vector cu valorile de timp
-    signal : numpy.ndarray
-        Vector cu valorile semnalului
     """
     df = pd.DataFrame({
         'timp': time,
@@ -95,17 +68,6 @@ def validate_csv_structure(filepath):
     """
     Valideaza structura fisierului CSV
 
-    Parameters:
-    -----------
-    filepath : str
-        Calea catre fisierul CSV
-
-    Returns:
-    --------
-    bool
-        True daca structura este valida
-    str
-        Mesaj de eroare sau succes
     """
     try:
         df = pd.read_csv(filepath)

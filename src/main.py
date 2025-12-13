@@ -4,7 +4,6 @@ Script principal pentru filtrarea semnalelor digitale cu interfata grafica
 import os
 import sys
 import numpy as np
-from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,7 +28,6 @@ def main():
         print("Operatiune anulata.")
         return
 
-    # ========== LOG MINIMAL ==========
     filter_names = {
         'lowpass': 'Trece-Jos',
         'highpass': 'Trece-Sus',

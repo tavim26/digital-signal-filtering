@@ -7,7 +7,6 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import config
 
 
 class FilterGUI:
@@ -435,9 +434,6 @@ def get_filter_configuration():
     """
     Afiseaza GUI si returneaza configuratia aleasa
 
-    Returns:
-    --------
-    tuple : (filter_type, params_dict) sau (None, {})
     """
     gui = FilterGUI()
     return gui.run()

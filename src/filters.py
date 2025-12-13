@@ -2,7 +2,6 @@
 Module pentru implementarea filtrelor digitale
 """
 import numpy as np
-from scipy import signal
 from scipy.signal import butter, filtfilt, freqz
 
 
@@ -14,20 +13,13 @@ def lowpass_filter(data, cutoff_freq, sampling_freq, order=4):
     Util pentru: eliminarea zgomotului, netezirea semnalului.
 
     Parameters:
-    -----------
-    data : numpy.ndarray
-        Semnalul de intrare
-    cutoff_freq : float
-        Frecventa de taiere (Hz)
-    sampling_freq : float
-        Frecventa de esantionare (Hz)
-    order : int
-        Ordinul filtrului (implicit 4)
+    data : Semnalul de intrare
+    cutoff_freq : Frecventa de taiere (Hz)
+    sampling_freq : Frecventa de esantionare (Hz)
+    order : Ordinul filtrului (implicit 4)
 
     Returns:
-    --------
-    filtered_data : numpy.ndarray
-        Semnalul filtrat
+    filtered_data : Semnalul filtrat
     """
     # Valideaza parametrii
     nyquist = sampling_freq / 2.0
@@ -51,6 +43,7 @@ def lowpass_filter(data, cutoff_freq, sampling_freq, order=4):
     return filtered_data
 
 
+
 def highpass_filter(data, cutoff_freq, sampling_freq, order=4):
     """
     Filtru trece-sus Butterworth
@@ -59,20 +52,13 @@ def highpass_filter(data, cutoff_freq, sampling_freq, order=4):
     Util pentru: eliminarea componentei DC, eliminarea trend-urilor lente.
 
     Parameters:
-    -----------
-    data : numpy.ndarray
-        Semnalul de intrare
-    cutoff_freq : float
-        Frecventa de taiere (Hz)
-    sampling_freq : float
-        Frecventa de esantionare (Hz)
-    order : int
-        Ordinul filtrului (implicit 4)
+    data : Semnalul de intrare
+    cutoff_freq : Frecventa de taiere (Hz)
+    sampling_freq : Frecventa de esantionare (Hz)
+    order : Ordinul filtrului (implicit 4)
 
     Returns:
-    --------
-    filtered_data : numpy.ndarray
-        Semnalul filtrat
+    filtered_data : Semnalul filtrat
     """
     # Valideaza parametrii
     nyquist = sampling_freq / 2.0
@@ -96,6 +82,7 @@ def highpass_filter(data, cutoff_freq, sampling_freq, order=4):
     return filtered_data
 
 
+
 def bandpass_filter(data, low_cutoff, high_cutoff, sampling_freq, order=4):
     """
     Filtru trece-banda Butterworth
@@ -104,22 +91,14 @@ def bandpass_filter(data, low_cutoff, high_cutoff, sampling_freq, order=4):
     Util pentru: izolarea unei benzi specifice de frecvente.
 
     Parameters:
-    -----------
-    data : numpy.ndarray
-        Semnalul de intrare
-    low_cutoff : float
-        Frecventa de taiere inferioara (Hz)
-    high_cutoff : float
-        Frecventa de taiere superioara (Hz)
-    sampling_freq : float
-        Frecventa de esantionare (Hz)
-    order : int
-        Ordinul filtrului (implicit 4)
+    data : Semnalul de intrare
+    low_cutoff : Frecventa de taiere inferioara (Hz)
+    high_cutoff : Frecventa de taiere superioara (Hz)
+    sampling_freq : Frecventa de esantionare (Hz)
+    order : Ordinul filtrului (implicit 4)
 
     Returns:
-    --------
-    filtered_data : numpy.ndarray
-        Semnalul filtrat
+    filtered_data : Semnalul filtrat
     """
     # Valideaza parametrii
     nyquist = sampling_freq / 2.0
@@ -149,31 +128,23 @@ def bandpass_filter(data, low_cutoff, high_cutoff, sampling_freq, order=4):
     return filtered_data
 
 
+
+
 def get_filter_response(filter_type, cutoff_freq, sampling_freq, order=4, low_cutoff=None, high_cutoff=None):
     """
     Calculeaza raspunsul in frecventa al filtrului
 
     Parameters:
-    -----------
-    filter_type : str
-        Tipul filtrului: 'lowpass', 'highpass', sau 'bandpass'
-    cutoff_freq : float
-        Frecventa de taiere (pentru lowpass si highpass)
-    sampling_freq : float
-        Frecventa de esantionare
-    order : int
-        Ordinul filtrului
-    low_cutoff : float
-        Frecventa inferioara (pentru bandpass)
-    high_cutoff : float
-        Frecventa superioara (pentru bandpass)
+    filter_type : Tipul filtrului: 'lowpass', 'highpass', sau 'bandpass'
+    cutoff_freq : Frecventa de taiere (pentru lowpass si highpass)
+    sampling_freq : Frecventa de esantionare
+    order : Ordinul filtrului
+    low_cutoff : Frecventa inferioara (pentru bandpass)
+    high_cutoff : Frecventa superioara (pentru bandpass)
 
     Returns:
-    --------
-    frequencies : numpy.ndarray
-        Vectorul de frecvente
-    response : numpy.ndarray
-        Raspunsul in frecventa (magnitudine)
+    frequencies : Vectorul de frecvente
+    response : Raspunsul in frecventa (magnitudine)
     """
     nyquist = sampling_freq / 2.0
 
