@@ -1,3 +1,0 @@
-"""
-Pachetsuite pentru teste unitare
-"""

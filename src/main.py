@@ -1,17 +1,18 @@
 """
-Script principal pentru filtrarea semnalelor digitale
+Script principal pentru filtrarea semnalelor digitale cu interfata grafica
 """
 import os
 import sys
 import numpy as np
 from pathlib import Path
 
-# Import module locale
-from data_loader import load_signal_from_csv, save_signal
-from filters import lowpass_filter, highpass_filter, bandpass_filter, get_filter_response
-from visualization import plot_signals, plot_frequency_spectrum, plot_filter_response, plot_all_analysis
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Import config
+import data_loader
+import filters
+import visualization
+import gui
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
@@ -20,140 +21,112 @@ def main():
     """
     Functia principala pentru procesarea semnalelor
     """
-    print("=" * 70)
-    print("SISTEM DE FILTRARE SEMNALE DIGITALE")
-    print("=" * 70)
+    # ========== SELECTIE FILTRU PRIN GUI ==========
+
+    filter_type, params = gui.get_filter_configuration()
+
+    if filter_type is None:
+        print("Operatiune anulata.")
+        return
+
+    # ========== LOG MINIMAL ==========
+    filter_names = {
+        'lowpass': 'Trece-Jos',
+        'highpass': 'Trece-Sus',
+        'bandpass': 'Trece-Banda'
+    }
+
+    print(f"\nFiltru selectat: {filter_names[filter_type]}")
+    print(f"Ordin: {params['order']}")
+
+    if filter_type == 'lowpass':
+        print(f"Frecventa taiere: {params['cutoff']} Hz")
+        cutoff_info = f"Frecventa taiere: {params['cutoff']} Hz, Ordin: {params['order']}"
+    elif filter_type == 'highpass':
+        print(f"Frecventa taiere: {params['cutoff']} Hz")
+        cutoff_info = f"Frecventa taiere: {params['cutoff']} Hz, Ordin: {params['order']}"
+    elif filter_type == 'bandpass':
+        print(f"Banda: {params['low_cutoff']} - {params['high_cutoff']} Hz")
+        cutoff_info = f"Banda: {params['low_cutoff']} - {params['high_cutoff']} Hz, Ordin: {params['order']}"
+
     print()
-
-    # ========== CONFIGURARE ==========
-
-    # Calea catre fisierul de intrare (modifica cu fisierul tau)
-    input_file = os.path.join(config.DATA_RAW_DIR, 'semnal_test.csv')
-
-    # Parametri filtru
-    filter_order = 4
-
-    # Frecvente de taiere (modifica dupa necesitati)
-    lowpass_cutoff = 50  # Hz - pentru filtru trece-jos
-    highpass_cutoff = 10  # Hz - pentru filtru trece-sus
-    bandpass_low = 20  # Hz - pentru filtru trece-banda
-    bandpass_high = 80  # Hz - pentru filtru trece-banda
-
-    # Tipul de filtru de aplicat: 'lowpass', 'highpass', 'bandpass'
-    filter_type = 'lowpass'
 
     # ========== INCARCARE DATE ==========
 
-    print(f"Incarcare date din: {input_file}")
-    print()
+    input_file = os.path.join(config.DATA_RAW_DIR, 'semnal_test.csv')
 
     try:
-        time, signal_data, sampling_freq = load_signal_from_csv(input_file)
-        print()
+        time, signal_data, sampling_freq = data_loader.load_signal_from_csv(input_file)
     except FileNotFoundError:
         print(f"EROARE: Fisierul {input_file} nu exista!")
-        print(f"Asigura-te ca ai un fisier CSV in directorul: {config.DATA_RAW_DIR}")
-        print()
-        print("Generare date de test...")
         generate_test_data()
+        print("Ruleaza din nou aplicatia!")
         return
     except Exception as e:
-        print(f"EROARE la incarcarea datelor: {str(e)}")
+        print(f"EROARE: {str(e)}")
         return
 
     # ========== APLICARE FILTRU ==========
 
-    print(f"Aplicare filtru: {filter_type.upper()}")
-    print(f"Frecventa esantionare: {sampling_freq:.2f} Hz")
-    print(f"Frecventa Nyquist: {sampling_freq / 2:.2f} Hz")
-    print()
-
     try:
         if filter_type == 'lowpass':
-            filtered_signal = lowpass_filter(signal_data, lowpass_cutoff, sampling_freq, order=filter_order)
-            cutoff_info = f"Frecventa taiere: {lowpass_cutoff} Hz"
+            filtered_signal = filters.lowpass_filter(signal_data, params['cutoff'],
+                                                    sampling_freq, order=params['order'])
 
         elif filter_type == 'highpass':
-            filtered_signal = highpass_filter(signal_data, highpass_cutoff, sampling_freq, order=filter_order)
-            cutoff_info = f"Frecventa taiere: {highpass_cutoff} Hz"
+            filtered_signal = filters.highpass_filter(signal_data, params['cutoff'],
+                                                     sampling_freq, order=params['order'])
 
         elif filter_type == 'bandpass':
-            filtered_signal = bandpass_filter(signal_data, bandpass_low, bandpass_high,
-                                              sampling_freq, order=filter_order)
-            cutoff_info = f"Banda: {bandpass_low} - {bandpass_high} Hz"
-        else:
-            print(f"EROARE: Tip filtru necunoscut: {filter_type}")
-            return
-
-        print()
+            filtered_signal = filters.bandpass_filter(signal_data, params['low_cutoff'],
+                                                     params['high_cutoff'],
+                                                     sampling_freq, order=params['order'])
 
     except Exception as e:
-        print(f"EROARE la aplicarea filtrului: {str(e)}")
+        print(f"EROARE la filtrare: {str(e)}")
         return
 
     # ========== SALVARE REZULTATE ==========
 
     output_file = os.path.join(config.DATA_PROCESSED_DIR, f'semnal_{filter_type}_filtrat.csv')
-    save_signal(output_file, time, filtered_signal)
-    print()
+    data_loader.save_signal(output_file, time, filtered_signal)
 
     # ========== VIZUALIZARE ==========
 
-    print("Generare grafice...")
-    print()
+    visualization.plot_time_domain_comparison(time, signal_data, filtered_signal,
+                                             filter_type, cutoff_info)
 
-    # Grafic comparativ semnal temporal
-    plot_signals(time, signal_data, filtered_signal,
-                 title=f"Comparatie: Filtru {filter_type.upper()}")
+    visualization.plot_frequency_domain_comparison(time, signal_data, filtered_signal,
+                                                  sampling_freq, filter_type, cutoff_info)
 
-    # Spectru de frecventa
-    plot_frequency_spectrum(time, signal_data, filtered_signal, sampling_freq,
-                            title=f"Analiza Frecventa - Filtru {filter_type.upper()}")
-
-    # Raspuns filtru
     if filter_type == 'bandpass':
-        freq_response, mag_response = get_filter_response(filter_type, None, sampling_freq,
-                                                          filter_order, bandpass_low, bandpass_high)
+        freq_response, mag_response = filters.get_filter_response(
+            filter_type, None, sampling_freq, params['order'],
+            params['low_cutoff'], params['high_cutoff'])
     else:
-        cutoff = lowpass_cutoff if filter_type == 'lowpass' else highpass_cutoff
-        freq_response, mag_response = get_filter_response(filter_type, cutoff, sampling_freq, filter_order)
+        freq_response, mag_response = filters.get_filter_response(
+            filter_type, params['cutoff'], sampling_freq, params['order'])
 
-    plot_filter_response(freq_response, mag_response, filter_type.upper(), cutoff_info)
+    visualization.plot_filter_response(freq_response, mag_response, filter_type, cutoff_info)
 
-    # Analiza completa
-    plot_all_analysis(time, signal_data, filtered_signal, sampling_freq,
-                      filter_type.upper(), cutoff_info)
+    visualization.show_all_plots()
 
-    print("=" * 70)
-    print("PROCESARE FINALIZATA CU SUCCES!")
-    print("=" * 70)
+    print("Procesare finalizata.\n")
 
 
 def generate_test_data():
-    """
-    Genereaza date de test pentru demonstratie
-    """
-    print()
-    print("Generare semnal de test...")
-
-    # Parametri semnal
-    duration = 2.0  # secunde
-    sampling_freq = 1000  # Hz
+    """Genereaza date de test"""
+    duration = 2.0
+    sampling_freq = 1000
     t = np.linspace(0, duration, int(sampling_freq * duration))
 
-    # Semnal compozit: ton de 5 Hz + ton de 50 Hz + zgomot
     signal_clean = np.sin(2 * np.pi * 5 * t) + 0.5 * np.sin(2 * np.pi * 50 * t)
     noise = np.random.normal(0, 0.2, len(t))
     signal_noisy = signal_clean + noise
 
-    # Salvare
     output_file = os.path.join(config.DATA_RAW_DIR, 'semnal_test.csv')
-    save_signal(output_file, t, signal_noisy)
-
-    print()
+    data_loader.save_signal(output_file, t, signal_noisy)
     print(f"Semnal de test generat: {output_file}")
-    print("Ruleaza din nou programul pentru a-l procesa!")
-    print()
 
 
 if __name__ == "__main__":
