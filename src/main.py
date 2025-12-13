@@ -5,28 +5,78 @@ import os
 import sys
 import numpy as np
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Adaugă directorul părinte (rădăcina proiectului) la sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
+# Importă config din rădăcină
+import config
+
+# Importă modulele locale din src/
 import data_loader
 import filters
 import visualization
 import gui
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import config
 
 
 def main():
     """
     Functia principala pentru procesarea semnalelor
     """
-    # ========== SELECTIE FILTRU PRIN GUI ==========
+    # ========== INCARCARE DATE MAI ÎNTÂI ==========
 
-    filter_type, params = gui.get_filter_configuration()
+    input_file = os.path.join(config.DATA_RAW_DIR, 'semnal_test.csv')
+
+    try:
+        time, signal_data, sampling_freq = data_loader.load_signal_from_csv(input_file)
+    except FileNotFoundError:
+        print(f"Fisierul {input_file} nu exista. Generez date de test...")
+        generate_test_data()
+        # Încearcă din nou să încarce
+        try:
+            time, signal_data, sampling_freq = data_loader.load_signal_from_csv(input_file)
+            print("Date de test incarcate cu succes!\n")
+        except Exception as e:
+            print(f"EROARE: Nu pot incarca datele: {str(e)}")
+            return
+    except Exception as e:
+        print(f"EROARE: {str(e)}")
+        return
+
+    # ========== ACUM AFISEAZA GUI CU FRECVENȚA CUNOSCUTA ==========
+
+    print(f"Frecventa Nyquist: {sampling_freq/2:.2f} Hz")
+    print("Alege parametrii filtrului...\n")
+
+    filter_type, params = gui.get_filter_configuration(sampling_freq)
 
     if filter_type is None:
         print("Operatiune anulata.")
         return
+
+    # ========== VALIDARE FRECVENȚE DE TAIERE ==========
+
+    nyquist = sampling_freq / 2
+
+    if filter_type == 'lowpass':
+        if params.get('cutoff', 0) >= nyquist:
+            print(f"EROARE: Frecventa de taiere ({params['cutoff']} Hz) >= Nyquist ({nyquist:.2f} Hz)")
+            return
+
+    elif filter_type == 'highpass':
+        if params.get('cutoff', 0) >= nyquist:
+            print(f"EROARE: Frecventa de taiere ({params['cutoff']} Hz) >= Nyquist ({nyquist:.2f} Hz)")
+            return
+
+    elif filter_type == 'bandpass':
+        if params.get('high_cutoff', 0) >= nyquist:
+            print(f"EROARE: Frecventa superioara ({params['high_cutoff']} Hz) >= Nyquist ({nyquist:.2f} Hz)")
+            return
+        if params.get('low_cutoff', 0) >= params.get('high_cutoff', 0):
+            print(f"EROARE: Frecventa inferioara trebuie < frecventa superioara")
+            return
+
+    # ========== AFIȘARE PARAMETRI SELECTATI ==========
 
     filter_names = {
         'lowpass': 'Trece-Jos',
@@ -36,6 +86,7 @@ def main():
 
     print(f"\nFiltru selectat: {filter_names[filter_type]}")
     print(f"Ordin: {params['order']}")
+    print(f"Frecventa esantionare (din CSV): {sampling_freq:.2f} Hz")
 
     if filter_type == 'lowpass':
         print(f"Frecventa taiere: {params['cutoff']} Hz")
@@ -48,21 +99,6 @@ def main():
         cutoff_info = f"Banda: {params['low_cutoff']} - {params['high_cutoff']} Hz, Ordin: {params['order']}"
 
     print()
-
-    # ========== INCARCARE DATE ==========
-
-    input_file = os.path.join(config.DATA_RAW_DIR, 'semnal_test.csv')
-
-    try:
-        time, signal_data, sampling_freq = data_loader.load_signal_from_csv(input_file)
-    except FileNotFoundError:
-        print(f"EROARE: Fisierul {input_file} nu exista!")
-        generate_test_data()
-        print("Ruleaza din nou aplicatia!")
-        return
-    except Exception as e:
-        print(f"EROARE: {str(e)}")
-        return
 
     # ========== APLICARE FILTRU ==========
 

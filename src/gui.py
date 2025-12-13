@@ -14,13 +14,20 @@ class FilterGUI:
     Interfata grafica profesionista pentru selectia si configurarea filtrului
     """
 
-    def __init__(self):
+    def __init__(self, sampling_freq=None):
         self.selected_filter = None
         self.filter_params = {}
+        self.sampling_freq = sampling_freq
 
         self.root = tk.Tk()
-        self.root.title("Configurare Filtru Digital")
-        self.root.geometry("600x700")
+
+        # Titlu cu frecvența de eșantionare dacă este disponibilă
+        if sampling_freq:
+            self.root.title(f"Configurare Filtru Digital - Fs = {sampling_freq:.2f} Hz")
+        else:
+            self.root.title("Configurare Filtru Digital")
+
+        self.root.geometry("600x750")
         self.root.resizable(False, False)
         self.root.configure(bg='#f5f5f5')
 
@@ -34,7 +41,6 @@ class FilterGUI:
         self.highpass_cutoff_var = tk.DoubleVar(value=10.0)
         self.bandpass_low_var = tk.DoubleVar(value=20.0)
         self.bandpass_high_var = tk.DoubleVar(value=80.0)
-        self.sampling_freq_var = tk.DoubleVar(value=1000.0)
 
         self.create_widgets()
 
@@ -42,7 +48,7 @@ class FilterGUI:
         """Centreaza fereastra pe ecran"""
         self.root.update_idletasks()
         width = 600
-        height = 700
+        height = 750
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f'{width}x{height}+{x}+{y}')
@@ -67,6 +73,28 @@ class FilterGUI:
         # ========== MAIN CONTENT ==========
         main_frame = tk.Frame(self.root, bg='#f5f5f5')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+
+        # --- Afișare frecvență de eșantionare (doar informativ) ---
+        if self.sampling_freq:
+            info_frame = tk.Frame(main_frame, bg='#e8f4f8', relief=tk.RIDGE, borderwidth=2)
+            info_frame.pack(fill=tk.X, pady=(0, 20), padx=5, ipady=10)
+
+            tk.Label(
+                info_frame,
+                text=f"📊 Frecvența de eșantionare (din CSV): {self.sampling_freq:.2f} Hz",
+                font=('Segoe UI', 11, 'bold'),
+                bg='#e8f4f8',
+                fg='#2c3e50'
+            ).pack(pady=5)
+
+            nyquist = self.sampling_freq / 2
+            tk.Label(
+                info_frame,
+                text=f"Frecvența Nyquist (maximă): {nyquist:.2f} Hz",
+                font=('Segoe UI', 9),
+                bg='#e8f4f8',
+                fg='#7f8c8d'
+            ).pack(pady=2)
 
         # --- Sectiune 1: Tipul Filtrului ---
         section1 = tk.LabelFrame(
@@ -139,35 +167,6 @@ class FilterGUI:
         tk.Label(
             order_frame,
             text="(2-8, ordin mai mare = tranzitie mai ascutita)",
-            font=('Segoe UI', 8),
-            bg='#f5f5f5',
-            fg='#7f8c8d'
-        ).pack(side=tk.LEFT)
-
-        # Frecventa de esantionare
-        fs_frame = tk.Frame(section2, bg='#f5f5f5')
-        fs_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            fs_frame,
-            text="Frecventa Esantionare:",
-            font=('Segoe UI', 10),
-            bg='#f5f5f5',
-            width=20,
-            anchor='w'
-        ).pack(side=tk.LEFT)
-
-        fs_entry = tk.Entry(
-            fs_frame,
-            textvariable=self.sampling_freq_var,
-            font=('Segoe UI', 10),
-            width=10
-        )
-        fs_entry.pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            fs_frame,
-            text="Hz (din fisierul CSV)",
             font=('Segoe UI', 8),
             bg='#f5f5f5',
             fg='#7f8c8d'
@@ -355,42 +354,21 @@ class FilterGUI:
             self.bandpass_frame.pack(fill=tk.X, pady=5)
 
     def validate_inputs(self):
-        """Valideaza inputurile utilizatorului"""
+        """Valideaza inputurile utilizatorului (validare de bază, fără Nyquist)"""
         if not self.filter_type_var.get():
             messagebox.showerror("Eroare", "Selecteaza un tip de filtru!")
             return False
 
-        fs = self.sampling_freq_var.get()
-        nyquist = fs / 2
-
         filter_type = self.filter_type_var.get()
 
-        if filter_type == 'lowpass':
-            cutoff = self.lowpass_cutoff_var.get()
-            if cutoff >= nyquist:
-                messagebox.showerror("Eroare",
-                    f"Frecventa de taiere ({cutoff} Hz) trebuie sa fie mai mica decat frecventa Nyquist ({nyquist} Hz)!")
-                return False
-
-        elif filter_type == 'highpass':
-            cutoff = self.highpass_cutoff_var.get()
-            if cutoff >= nyquist:
-                messagebox.showerror("Eroare",
-                    f"Frecventa de taiere ({cutoff} Hz) trebuie sa fie mai mica decat frecventa Nyquist ({nyquist} Hz)!")
-                return False
-
-        elif filter_type == 'bandpass':
+        # Validare de bază pentru bandpass
+        if filter_type == 'bandpass':
             low = self.bandpass_low_var.get()
             high = self.bandpass_high_var.get()
 
             if low >= high:
                 messagebox.showerror("Eroare",
                     "Frecventa inferioara trebuie sa fie mai mica decat frecventa superioara!")
-                return False
-
-            if high >= nyquist:
-                messagebox.showerror("Eroare",
-                    f"Frecventa superioara ({high} Hz) trebuie sa fie mai mica decat frecventa Nyquist ({nyquist} Hz)!")
                 return False
 
         return True
@@ -402,11 +380,10 @@ class FilterGUI:
 
         self.selected_filter = self.filter_type_var.get()
 
-        # Colecteaza parametrii
+        # Colecteaza parametrii (fără sampling_freq)
         self.filter_params = {
             'filter_type': self.selected_filter,
             'order': self.order_var.get(),
-            'sampling_freq': self.sampling_freq_var.get(),
         }
 
         if self.selected_filter == 'lowpass':
@@ -430,10 +407,15 @@ class FilterGUI:
         return self.selected_filter, self.filter_params
 
 
-def get_filter_configuration():
+def get_filter_configuration(sampling_freq=None):
     """
     Afiseaza GUI si returneaza configuratia aleasa
 
+    Parameters:
+    sampling_freq : Frecventa de esantionare (optional, pentru afisare)
+
+    Returns:
+    filter_type, filter_params
     """
-    gui = FilterGUI()
+    gui = FilterGUI(sampling_freq)
     return gui.run()

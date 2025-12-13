@@ -7,7 +7,10 @@ from scipy import signal as sig
 import sys
 import os
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Adaugă rădăcina proiectului la sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 import config
 
 
@@ -90,7 +93,6 @@ def plot_time_domain_comparison(time, original_signal, filtered_signal, filter_t
 
     plt.tight_layout()
     plt.show(block=False)
-
 
 
 def plot_frequency_domain_comparison(time, original_signal, filtered_signal, sampling_freq,
@@ -266,6 +268,8 @@ def plot_filter_response(frequencies, response, filter_type, cutoff_info):
     plt.show(block=False)
 
 
-
 def show_all_plots():
+    """
+    Afișează toate graficele și blochează execuția până la închidere
+    """
     plt.show()
