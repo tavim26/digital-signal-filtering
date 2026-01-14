@@ -81,7 +81,7 @@ class FilterGUI:
 
             tk.Label(
                 info_frame,
-                text=f"📊 Frecvența de eșantionare (din CSV): {self.sampling_freq:.2f} Hz",
+                text=f" Frecvența de eșantionare (din CSV): {self.sampling_freq:.2f} Hz",
                 font=('Segoe UI', 11, 'bold'),
                 bg='#e8f4f8',
                 fg='#2c3e50'

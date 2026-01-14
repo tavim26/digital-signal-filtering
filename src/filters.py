@@ -21,19 +21,45 @@ def lowpass_filter(data, cutoff_freq, sampling_freq, order=4):
     Returns:
     filtered_data : Semnalul filtrat
     """
-    # Valideaza parametrii
+    # VALIDARE PARAMETRI
+    # -------------------
+    # Frecventa Nyquist = jumatate din frecventa de esantionare
+    # Este frecventa maxima care poate fi reprezentata corect in semnal
+    # Teorema Nyquist: fs >= 2 * fmax
     nyquist = sampling_freq / 2.0
+
+    # Verifica ca frecventa de taiere este sub Nyquist
+    # Daca depaseste, filtrul nu poate functiona corect (aliasing)
     if cutoff_freq >= nyquist:
         raise ValueError(
             f"Frecventa de taiere ({cutoff_freq} Hz) trebuie sa fie mai mica decat frecventa Nyquist ({nyquist} Hz)")
 
-    # Normalizeaza frecventa de taiere
+    # NORMALIZARE FRECVENTA
+    # ---------------------
+    # Butterworth lucreaza cu frecvente normalizate in intervalul [0, 1]
+    # unde 1 = frecventa Nyquist
+    # Exemplu: daca cutoff = 50 Hz si Nyquist = 500 Hz => normalized = 0.1
     normalized_cutoff = cutoff_freq / nyquist
 
-    # Proiecteaza filtrul Butterworth
+    # PROIECTARE FILTRU BUTTERWORTH
+    # ------------------------------
+    # butter() genereaza coeficientii filtrului digital
+    # - order: ordinul filtrului (mai mare = tranzitie mai ascutita intre banda de trecere si banda oprita)
+    # - normalized_cutoff: frecventa de taiere normalizata
+    # - btype='low': tip filtru trece-jos (low-pass)
+    # - analog=False: filtru digital (nu analog)
+    # Returneaza:
+    # - b: coeficientii numitorului (feedforward)
+    # - a: coeficientii numaratorului (feedback)
     b, a = butter(order, normalized_cutoff, btype='low', analog=False)
 
-    # Aplica filtrul (filtfilt pentru faza zero)
+    # APLICARE FILTRU
+    # ---------------
+    # filtfilt() aplica filtrul de 2 ori: inainte si inapoi
+    # Avantaje:
+    # 1. Faza zero: nu introduce intarziere in semnal
+    # 2. Raspuns in magnitudine de 2x mai ascutit (ordin efectiv = 2 * order)
+    # Alternative: lfilter() - aplica filtrul o singura data, introduce intarziere de faza
     filtered_data = filtfilt(b, a, data)
 
     print(f"Aplicat filtru trece-jos:")
@@ -60,19 +86,33 @@ def highpass_filter(data, cutoff_freq, sampling_freq, order=4):
     Returns:
     filtered_data : Semnalul filtrat
     """
-    # Valideaza parametrii
+    # VALIDARE PARAMETRI
+    # -------------------
+    # Calculam frecventa Nyquist (limita superioara a spectrului)
     nyquist = sampling_freq / 2.0
+
+    # Verificam ca frecventa de taiere este sub Nyquist
+    # Nota: pentru highpass, cutoff trebuie sa fie > 0 si < Nyquist
     if cutoff_freq >= nyquist:
         raise ValueError(
             f"Frecventa de taiere ({cutoff_freq} Hz) trebuie sa fie mai mica decat frecventa Nyquist ({nyquist} Hz)")
 
-    # Normalizeaza frecventa de taiere
+    # NORMALIZARE FRECVENTA
+    # ---------------------
+    # Normalizare la intervalul [0, 1] pentru Butterworth
     normalized_cutoff = cutoff_freq / nyquist
 
-    # Proiecteaza filtrul Butterworth
+    # PROIECTARE FILTRU BUTTERWORTH
+    # ------------------------------
+    # btype='high': tip filtru trece-sus (high-pass)
+    # Elimina frecventele sub cutoff_freq
+    # Folosit pentru: eliminare DC offset, eliminare drift lent, izolare frecvente inalte
     b, a = butter(order, normalized_cutoff, btype='high', analog=False)
 
-    # Aplica filtrul
+    # APLICARE FILTRU
+    # ---------------
+    # filtfilt() asigura faza zero (fara intarziere)
+    # Important pentru: analiza temporala precisa, sincronizare multi-semnal
     filtered_data = filtfilt(b, a, data)
 
     print(f"Aplicat filtru trece-sus:")
@@ -100,24 +140,39 @@ def bandpass_filter(data, low_cutoff, high_cutoff, sampling_freq, order=4):
     Returns:
     filtered_data : Semnalul filtrat
     """
-    # Valideaza parametrii
+    # VALIDARE PARAMETRI
+    # -------------------
     nyquist = sampling_freq / 2.0
 
+    # Verifica ca frecventa inferioara < frecventa superioara
+    # Altfel banda ar fi invalida
     if low_cutoff >= high_cutoff:
         raise ValueError("Frecventa inferioara trebuie sa fie mai mica decat frecventa superioara")
 
+    # Verifica ca frecventa superioara este sub Nyquist
+    # Ambele frecvente trebuie sa fie in domeniul valid [0, Nyquist]
     if high_cutoff >= nyquist:
         raise ValueError(
             f"Frecventa superioara ({high_cutoff} Hz) trebuie sa fie mai mica decat frecventa Nyquist ({nyquist} Hz)")
 
-    # Normalizeaza frecventele de taiere
+    # NORMALIZARE FRECVENTE
+    # ---------------------
+    # Normalizam AMBELE frecvente de taiere
     low_normalized = low_cutoff / nyquist
     high_normalized = high_cutoff / nyquist
 
-    # Proiecteaza filtrul Butterworth
+    # PROIECTARE FILTRU BUTTERWORTH
+    # ------------------------------
+    # btype='band': tip filtru trece-banda (band-pass)
+    # Parametru: lista cu 2 frecvente [low, high]
+    # Rezultat: trec doar frecventele in intervalul [low_cutoff, high_cutoff]
+    # Frecventele sub low_cutoff si peste high_cutoff sunt eliminate
+    # Aplicatii: izolare ritm cardiac (ECG), filtrare vocala, analiza spectrala selectiva
     b, a = butter(order, [low_normalized, high_normalized], btype='band', analog=False)
 
-    # Aplica filtrul
+    # APLICARE FILTRU
+    # ---------------
+    # filtfilt() pentru faza zero si raspuns mai ascutit
     filtered_data = filtfilt(b, a, data)
 
     print(f"Aplicat filtru trece-banda:")
@@ -129,41 +184,3 @@ def bandpass_filter(data, low_cutoff, high_cutoff, sampling_freq, order=4):
 
 
 
-
-def get_filter_response(filter_type, cutoff_freq, sampling_freq, order=4, low_cutoff=None, high_cutoff=None):
-    """
-    Calculeaza raspunsul in frecventa al filtrului
-
-    Parameters:
-    filter_type : Tipul filtrului: 'lowpass', 'highpass', sau 'bandpass'
-    cutoff_freq : Frecventa de taiere (pentru lowpass si highpass)
-    sampling_freq : Frecventa de esantionare
-    order : Ordinul filtrului
-    low_cutoff : Frecventa inferioara (pentru bandpass)
-    high_cutoff : Frecventa superioara (pentru bandpass)
-
-    Returns:
-    frequencies : Vectorul de frecvente
-    response : Raspunsul in frecventa (magnitudine)
-    """
-    nyquist = sampling_freq / 2.0
-
-    if filter_type == 'lowpass':
-        normalized_cutoff = cutoff_freq / nyquist
-        b, a = butter(order, normalized_cutoff, btype='low')
-    elif filter_type == 'highpass':
-        normalized_cutoff = cutoff_freq / nyquist
-        b, a = butter(order, normalized_cutoff, btype='high')
-    elif filter_type == 'bandpass':
-        low_normalized = low_cutoff / nyquist
-        high_normalized = high_cutoff / nyquist
-        b, a = butter(order, [low_normalized, high_normalized], btype='band')
-    else:
-        raise ValueError(f"Tip filtru necunoscut: {filter_type}")
-
-    # Calculeaza raspunsul in frecventa
-    w, h = freqz(b, a, worN=8000)
-    frequencies = w * sampling_freq / (2 * np.pi)
-    response = np.abs(h)
-
-    return frequencies, response
