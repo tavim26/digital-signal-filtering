@@ -32,7 +32,7 @@ def main():
 
     # Construieste calea completa catre fisierul de date
     # os.path.join() combina caile corect pentru orice sistem de operare (Windows/Linux/Mac)
-    input_file = os.path.join(config.DATA_RAW_DIR, 'semnal_test.csv')
+    input_file = os.path.join(config.DATA_RAW_DIR, 'test_signal.csv')
 
     try:
         # Incarca datele din CSV
