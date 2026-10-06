@@ -1,136 +1,114 @@
-# Filtrare Semnale Digitale
+# Digital Signal Filtering
 
-Implementare filtre digitale: trece-jos, trece-sus si trece-banda pentru procesarea semnalelor din fisiere CSV sau Excel.
+A Python desktop application that applies Butterworth low-pass, high-pass and band-pass filters to signals loaded from CSV files, and compares the signal before and after filtering in the time and frequency domains.
 
-## Descriere
+## Features
 
-Proiect pentru procesarea semnalelor digitale folosind trei tipuri de filtre:
-- Filtru trece-jos (Low-pass) - elimina frecventele inalte
-- Filtru trece-sus (High-pass) - elimina frecventele joase  
-- Filtru trece-banda (Band-pass) - pastreaza doar o banda de frecvente
+- **Three filter types:** low-pass, high-pass and band-pass, with configurable order and cutoff frequencies
+- **Zero-phase filtering:** the output is not delayed relative to the input
+- **Input validation** in the GUI, including the Nyquist limit derived from the loaded file
+- **Automatic sampling rate detection** from the time column, with checks for missing values and non-uniform sampling
+- **Time-domain and frequency-domain plots** comparing the original and filtered signals
+- **Reproducible test signal** generated automatically if no input file is present
 
-## Cerinte sistem
 
-- Python 3.10 sau mai recent
-- Git instalat
-- PyCharm 
+## How It Works
 
-## Instalare si setup 
+1. **Load:** the CSV file is read and the sampling frequency is computed from the timestamps.
+2. **Configure:** a Tkinter dialog collects the filter type, order and cutoff frequencies, and validates them before closing.
+3. **Filter:** a Butterworth filter is designed with SciPy and applied to the signal.
+4. **Save and plot:** the filtered signal is written to `data/processed/` and the results are plotted with Matplotlib.
 
-### Pasul 1: Cloneaza repository-ul
+A few implementation details:
 
-Deschide terminal/cmd si navigheaza unde vrei sa salvezi proiectul:
+- **Second-order sections.** Filters are designed in second-order sections (SOS) form rather than as transfer-function coefficients `(b, a)`. SOS remains numerically stable at high orders and low cutoff frequencies.
+- **Forward-backward filtering.** `sosfiltfilt` runs the filter forwards and then backwards. The phase shifts cancel out, so there is no delay, but the magnitude response is squared: the gain at the cutoff frequency is −6 dB instead of −3 dB, and the roll-off is twice as steep.
+- **Scaled spectrum.** The amplitude spectrum is scaled so that a sinusoid of amplitude *A* appears as a peak of height *A*, which makes it directly comparable with the time-domain signal.
+
+## Requirements
+
+- Python 3.10 or newer
+- Tkinter. It is included with Python on Windows and macOS (python.org installer). On Debian/Ubuntu-based Linux, install it with:
+
 ```bash
-cd C:\Users\[username]\Desktop
-git clone https://github.com/[username]/Filtrare-Semnale-Digitale.git
-cd Filtrare-Semnale-Digitale
+  sudo apt install python3-tk
 ```
 
-### Pasul 2: Deschide proiectul in PyCharm
+## Installation
 
-1. Deschide PyCharm
-2. File → Open
-3. Selecteaza directorul `Filtrare-Semnale-Digitale`
-4. Click OK
-
-### Pasul 3: Configureaza mediul virtual Python
-
-**IMPORTANT:** Fiecare dezvoltator trebuie sa isi creeze propriul mediu virtual local.
-
-#### Configurare venv din terminal
-
-In terminal PyCharm (View → Tool Windows → Terminal):
 ```bash
-# Windows
-python -m venv venv
-venv\Scripts\activate
+git clone https://github.com/tavim26/digital-signal-filtering.git
+cd digital-signal-filtering
+
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+
+pip install -e .
 ```
 
-### Pasul 4: Instaleaza dependentele
+## Usage
 
-Cu mediul virtual activ, in terminal PyCharm:
 ```bash
-pip install -r requirements.txt
+python -m signal_filtering
 ```
 
-Astepti sa se instaleze toate bibliotecile (numpy, scipy, pandas, matplotlib, etc.)
+Choose a filter in the dialog and click **Apply Filter** (or press Enter). The filtered signal is saved to `data/processed/<input>_<filter>.csv`, and two plot windows open.
 
-### Pasul 5: Verifica instalarea
+### Input format
 
-Ruleaza in terminal:
+The application reads `data/raw/test_signal.csv`. To filter your own data, replace this file, or change `DEFAULT_INPUT_FILE` in `src/signal_filtering/config.py`.
+
+The file must have a header row and two numeric columns:
+
+```csv
+time,signal
+0.000,0.512
+0.001,1.203
+...
+```
+
+- The **first column** holds the timestamps, in seconds.
+- The **second column** holds the signal values.
+- Samples must be **uniformly spaced** in time.
+
+### Test signal
+
+If the input file is missing, a test signal is generated automatically. You can also regenerate it with:
+
 ```bash
-python -c "import numpy, scipy, pandas, matplotlib; print('Toate bibliotecile sunt instalate corect!')"
+python -m signal_filtering.signals
 ```
 
-Daca apare mesajul de succes, totul este OK.
+It lasts 2 seconds at 1000 Hz and is built so that each filter has a clearly visible effect with its default settings:
 
-### Pasul 6: Testeaza proiectul
-```bash
-python src/main.py
+| Component | Low-pass 50 Hz | High-pass 10 Hz | Band-pass 20–80 Hz |
+|---|---|---|---|
+| DC offset (0.5) | kept | removed | removed |
+| 2 Hz sine (amplitude 1.0) | kept | removed | removed |
+| 40 Hz sine (amplitude 0.8) | kept | kept | kept |
+| 200 Hz sine (amplitude 0.5) | removed | kept | removed |
+| White noise (σ = 0.2) | reduced | partly reduced | reduced |
+
+## Project Structure
+
 ```
-
-Daca nu exista erori de import, setup-ul este complet.
-
-## Structura proiect
-```
-Filtrare-Semnale-Digitale/
+digital-signal-filtering/
 ├── data/
-│   ├── raw/              # Pune aici fisierele CSV/Excel de intrare
-│   └── processed/        # Aici se salveaza rezultatele filtrate
-├── src/
-│   ├── data_loader.py    # Functii pentru citirea datelor
-│   ├── filters.py        # Implementare filtre digitale
-│   ├── visualization.py  # Functii pentru grafice
-│   └── main.py           # Script principal
-├── docs/                 # Documentatie
-├── requirements.txt      # Lista biblioteci necesare
-├── config.py             # Configurari globale
-└── .gitignore            # Fisiere ignorate de Git
+│   ├── raw/                  # input signals
+│   └── processed/            # filtered output (generated)
+├── docs/images/              # screenshots used in this README
+├── src/signal_filtering/
+│   ├── __main__.py           # application entry point
+│   ├── config.py             # paths, defaults and plot settings
+│   ├── data_io.py            # CSV loading, validation and saving
+│   ├── filters.py            # Butterworth filter design and application
+│   ├── gui.py                # Tkinter configuration dialog
+│   ├── signals.py            # test signal generator
+│   ├── validation.py         # filter parameter validation
+│   └── visualization.py      # time- and frequency-domain plots
+└── pyproject.toml
 ```
 
-## Utilizare
+## License
 
-### Adauga date de intrare
-
-1. Copiaza fisierul tau CSV sau Excel in `data/raw/`
-2. Fisierul trebuie sa contina doua coloane:
-   - Coloana 1: timp (sau index)
-   - Coloana 2: valori semnal
-
-### Ruleaza filtrarea
-```bash
-python src/main.py
-```
-
-Rezultatele filtrate se vor salva in `data/processed/`
-
-## Workflow Git pentru colaborare
-
-### Inainte sa incepi sa lucrezi
-
-Asigura-te ca ai ultima versiune:
-```bash
-git pull origin main
-```
-
-### Dupa ce faci modificari
-
-1. Verifica ce ai modificat:
-```bash
-git status
-```
-
-2. Adauga fisierele modificate:
-```bash
-git add .
-```
-
-3. Commit cu mesaj descriptiv:
-```bash
-git commit -m "mesaj"
-```
-
-4. Trimite pe GitHub:
-```bash
-git push origin main
-```
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
