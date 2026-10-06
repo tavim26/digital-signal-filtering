@@ -1,18 +1,33 @@
-# Python bytecode
+# Python bytecode and build artifacts
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+build/
+dist/
 
-# Virtual environment
+# Virtual environments
+.venv/
 venv/
 env/
 
-# PyCharm
+# IDEs
 .idea/
+.vscode/
+
+# Testing and tooling caches
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# OS
+# Generated output (keep the folder, ignore its contents)
+data/processed/*
+!data/processed/.gitkeep
+
+# OS files
 .DS_Store
 Thumbs.db
