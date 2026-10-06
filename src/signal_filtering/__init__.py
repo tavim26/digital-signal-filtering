@@ -1,6 +1,8 @@
-"""
-Pachet pentru procesarea si filtrarea semnalelor digitale
-"""
+"""Digital signal filtering: Butterworth filters applied to CSV signals."""
 
-__version__ = '1.0.0'
-__author__ = 'Echipa Filtrare Semnale'
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("signal-filtering")
+except PackageNotFoundError:  # running from source without installation
+    __version__ = "unknown"
