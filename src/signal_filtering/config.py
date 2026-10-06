@@ -25,6 +25,13 @@ DEFAULT_FILTER_ORDER = 4
 MIN_FILTER_ORDER = 1
 MAX_FILTER_ORDER = 10
 
+# Supported filter types (keys are the scipy names) and their display names.
+FILTER_TYPES = {
+    "lowpass": "Low-pass",
+    "highpass": "High-pass",
+    "bandpass": "Band-pass",
+}
+
 # Default cutoffs, expressed as fractions of the Nyquist frequency so they
 # remain valid for any sampling rate loaded from a file.
 DEFAULT_LOWPASS_CUTOFF_RATIO = 0.10
