@@ -1,421 +1,268 @@
-"""
-Interfata grafica profesionista pentru configurarea filtrului
-"""
+"""Tkinter dialog for choosing the filter type and its parameters."""
+
+from __future__ import annotations
+
+import math
 import tkinter as tk
-from tkinter import ttk, messagebox
-import os
-import sys
+from tkinter import font as tkfont
+from tkinter import messagebox, ttk
+from typing import NamedTuple
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from signal_filtering import config
+from signal_filtering.validation import Cutoff, validate_filter_parameters
+
+PADDING = 12
+
+FILTER_DESCRIPTIONS = {
+    "lowpass": "keeps frequencies below the cutoff",
+    "highpass": "keeps frequencies above the cutoff",
+    "bandpass": "keeps frequencies between two cutoffs",
+}
 
 
-class FilterGUI:
+class FilterSettings(NamedTuple):
+    """Filter parameters chosen by the user."""
+
+    filter_type: str
+    cutoff: Cutoff
+    order: int
+
+
+class FilterDialog:
+    """Window that collects filter settings and validates them before closing.
+
+    Invalid input is reported in a message box and the window stays open,
+    so the user can correct it instead of restarting the application.
     """
-    Interfata grafica profesionista pentru selectia si configurarea filtrului
-    """
 
-    def __init__(self, sampling_freq=None):
-        self.selected_filter = None
-        self.filter_params = {}
-        self.sampling_freq = sampling_freq
+    def __init__(self, sampling_frequency: float) -> None:
+        self._sampling_frequency = sampling_frequency
+        self._result: FilterSettings | None = None
+        nyquist = sampling_frequency / 2
 
-        self.root = tk.Tk()
+        self._root = tk.Tk()
+        self._root.title("Filter Configuration")
+        self._root.resizable(False, False)
 
-        # Titlu cu frecvența de eșantionare dacă este disponibilă
-        if sampling_freq:
-            self.root.title(f"Configurare Filtru Digital - Fs = {sampling_freq:.2f} Hz")
-        else:
-            self.root.title("Configurare Filtru Digital")
+        # Entries are bound to StringVars rather than DoubleVars: reading a
+        # DoubleVar that holds non-numeric text raises TclError, whereas a
+        # string can be parsed and the problem reported to the user.
+        self._filter_type = tk.StringVar(value="lowpass")
+        self._order = tk.StringVar(value=str(config.DEFAULT_FILTER_ORDER))
+        self._lowpass_cutoff = tk.StringVar(
+            value=f"{config.DEFAULT_LOWPASS_CUTOFF_RATIO * nyquist:g}")
+        self._highpass_cutoff = tk.StringVar(
+            value=f"{config.DEFAULT_HIGHPASS_CUTOFF_RATIO * nyquist:g}")
+        self._bandpass_low = tk.StringVar(
+            value=f"{config.DEFAULT_BANDPASS_LOW_RATIO * nyquist:g}")
+        self._bandpass_high = tk.StringVar(
+            value=f"{config.DEFAULT_BANDPASS_HIGH_RATIO * nyquist:g}")
 
-        self.root.geometry("600x750")
-        self.root.resizable(False, False)
-        self.root.configure(bg='#f5f5f5')
+        # Widgets shown only for a given filter type, keyed by type.
+        self._type_specific_widgets: dict[str, list[tk.Widget]] = {}
 
-        # Centreaza fereastra
-        self.center_window()
+        self._build_widgets(nyquist)
+        self._show_widgets_for_selected_type()
 
-        # Variabile pentru parametri
-        self.filter_type_var = tk.StringVar(value="")
-        self.order_var = tk.IntVar(value=4)
-        self.lowpass_cutoff_var = tk.DoubleVar(value=50.0)
-        self.highpass_cutoff_var = tk.DoubleVar(value=10.0)
-        self.bandpass_low_var = tk.DoubleVar(value=20.0)
-        self.bandpass_high_var = tk.DoubleVar(value=80.0)
+        self._root.bind("<Return>", lambda _event: self._on_apply())
+        self._root.bind("<Escape>", lambda _event: self._on_cancel())
+        self._root.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self._center_on_screen()
 
-        self.create_widgets()
+    def run(self) -> FilterSettings | None:
+        """Show the window and block until it is closed.
 
-    def center_window(self):
-        """Centreaza fereastra pe ecran"""
-        self.root.update_idletasks()
-        width = 600
-        height = 750
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f'{width}x{height}+{x}+{y}')
+        Returns
+        -------
+        FilterSettings or None
+            The validated settings, or None if the user cancelled.
+        """
+        self._root.mainloop()
+        return self._result
 
-    def create_widgets(self):
-        """Creaza elementele interfetei"""
+    # ------------------------------------------------------------------
+    # Layout
+    # ------------------------------------------------------------------
+    def _build_widgets(self, nyquist: float) -> None:
+        container = ttk.Frame(self._root, padding=PADDING)
+        container.grid(sticky="nsew")
 
-        # ========== HEADER ==========
-        header_frame = tk.Frame(self.root, bg='#2c3e50', height=80)
-        header_frame.pack(fill=tk.X)
-        header_frame.pack_propagate(False)
+        # Keep a reference: Tk drops fonts that are garbage-collected.
+        self._title_font = tkfont.nametofont("TkDefaultFont").copy()
+        # A negative size means pixels rather than points; abs() is close enough.
+        self._title_font.configure(
+            size=abs(self._title_font.cget("size")) + 4, weight="bold")
 
-        title_label = tk.Label(
-            header_frame,
-            text="Configurare Filtru Digital",
-            font=('Segoe UI', 20, 'bold'),
-            bg='#2c3e50',
-            fg='white'
+        ttk.Label(container, text="Filter Configuration",
+                  font=self._title_font).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            container,
+            text=(f"Sampling frequency: {self._sampling_frequency:g} Hz    "
+                  f"Nyquist frequency: {nyquist:g} Hz"),
+        ).grid(row=1, column=0, sticky="w", pady=(2, PADDING))
+
+        self._build_type_selector(container).grid(
+            row=2, column=0, sticky="ew", pady=(0, PADDING))
+        self._build_parameter_fields(container, nyquist).grid(
+            row=3, column=0, sticky="ew", pady=(0, PADDING))
+        self._build_buttons(container).grid(row=4, column=0, sticky="e")
+
+    def _build_type_selector(self, parent: ttk.Frame) -> ttk.LabelFrame:
+        frame = ttk.LabelFrame(parent, text="Filter type", padding=PADDING)
+        for row, (key, name) in enumerate(config.FILTER_TYPES.items()):
+            ttk.Radiobutton(
+                frame,
+                text=f"{name}: {FILTER_DESCRIPTIONS[key]}",
+                value=key,
+                variable=self._filter_type,
+                command=self._show_widgets_for_selected_type,
+            ).grid(row=row, column=0, sticky="w", pady=2)
+        return frame
+
+    def _build_parameter_fields(
+        self, parent: ttk.Frame, nyquist: float
+    ) -> ttk.LabelFrame:
+        frame = ttk.LabelFrame(parent, text="Parameters", padding=PADDING)
+        frequency_hint = f"Hz, between 0 and {nyquist:g}"
+
+        self._add_field(
+            frame, 0, "Order:",
+            ttk.Spinbox(frame, from_=config.MIN_FILTER_ORDER,
+                        to=config.MAX_FILTER_ORDER, increment=1,
+                        textvariable=self._order, width=10),
+            f"{config.MIN_FILTER_ORDER}-{config.MAX_FILTER_ORDER}, "
+            "higher means a steeper roll-off",
         )
-        title_label.pack(pady=20)
 
-        # ========== MAIN CONTENT ==========
-        main_frame = tk.Frame(self.root, bg='#f5f5f5')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
-
-        # --- Afișare frecvență de eșantionare (doar informativ) ---
-        if self.sampling_freq:
-            info_frame = tk.Frame(main_frame, bg='#e8f4f8', relief=tk.RIDGE, borderwidth=2)
-            info_frame.pack(fill=tk.X, pady=(0, 20), padx=5, ipady=10)
-
-            tk.Label(
-                info_frame,
-                text=f" Frecvența de eșantionare (din CSV): {self.sampling_freq:.2f} Hz",
-                font=('Segoe UI', 11, 'bold'),
-                bg='#e8f4f8',
-                fg='#2c3e50'
-            ).pack(pady=5)
-
-            nyquist = self.sampling_freq / 2
-            tk.Label(
-                info_frame,
-                text=f"Frecvența Nyquist (maximă): {nyquist:.2f} Hz",
-                font=('Segoe UI', 9),
-                bg='#e8f4f8',
-                fg='#7f8c8d'
-            ).pack(pady=2)
-
-        # --- Sectiune 1: Tipul Filtrului ---
-        section1 = tk.LabelFrame(
-            main_frame,
-            text="1. Selecteaza Tipul de Filtru",
-            font=('Segoe UI', 11, 'bold'),
-            bg='#f5f5f5',
-            fg='#2c3e50',
-            padx=15,
-            pady=15
+        # Rows for different filter types share the same grid rows; only the
+        # rows of the selected type are visible at any time.
+        self._type_specific_widgets["lowpass"] = self._add_field(
+            frame, 1, "Cutoff:",
+            ttk.Entry(frame, textvariable=self._lowpass_cutoff, width=12),
+            frequency_hint,
         )
-        section1.pack(fill=tk.X, pady=(0, 20))
+        self._type_specific_widgets["highpass"] = self._add_field(
+            frame, 1, "Cutoff:",
+            ttk.Entry(frame, textvariable=self._highpass_cutoff, width=12),
+            frequency_hint,
+        )
+        self._type_specific_widgets["bandpass"] = self._add_field(
+            frame, 1, "Lower cutoff:",
+            ttk.Entry(frame, textvariable=self._bandpass_low, width=12),
+            frequency_hint,
+        ) + self._add_field(
+            frame, 2, "Upper cutoff:",
+            ttk.Entry(frame, textvariable=self._bandpass_high, width=12),
+            frequency_hint,
+        )
+        return frame
 
-        filter_types = [
-            ("Filtru Trece-Jos (elimina frecvente inalte)", "lowpass", "#3498db"),
-            ("Filtru Trece-Sus (elimina frecvente joase)", "highpass", "#e74c3c"),
-            ("Filtru Trece-Banda (pastreaza o banda)", "bandpass", "#f39c12")
+    def _build_buttons(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = ttk.Frame(parent)
+        ttk.Button(frame, text="Cancel", command=self._on_cancel).grid(
+            row=0, column=0, padx=(0, 6))
+        ttk.Button(frame, text="Apply Filter", command=self._on_apply,
+                   default="active").grid(row=0, column=1)
+        return frame
+
+    @staticmethod
+    def _add_field(
+        parent: ttk.LabelFrame, row: int, label: str, field: tk.Widget, hint: str
+    ) -> list[tk.Widget]:
+        """Place a label, an input widget and a hint on one grid row."""
+        widgets = [
+            ttk.Label(parent, text=label),
+            field,
+            ttk.Label(parent, text=hint, foreground="gray"),
         ]
+        for column, widget in enumerate(widgets):
+            widget.grid(row=row, column=column, sticky="w", padx=(0, 8), pady=3)
+        return widgets
 
-        for text, value, color in filter_types:
-            rb = tk.Radiobutton(
-                section1,
-                text=text,
-                variable=self.filter_type_var,
-                value=value,
-                font=('Segoe UI', 10),
-                bg='#f5f5f5',
-                activebackground='#f5f5f5',
-                selectcolor=color,
-                command=self.on_filter_type_change
+    def _show_widgets_for_selected_type(self) -> None:
+        selected = self._filter_type.get()
+        for filter_type, widgets in self._type_specific_widgets.items():
+            for widget in widgets:
+                if filter_type == selected:
+                    # grid() with no arguments restores the earlier placement.
+                    widget.grid()
+                else:
+                    widget.grid_remove()
+
+    def _center_on_screen(self) -> None:
+        self._root.update_idletasks()
+        width = self._root.winfo_reqwidth()
+        height = self._root.winfo_reqheight()
+        x = (self._root.winfo_screenwidth() - width) // 2
+        y = (self._root.winfo_screenheight() - height) // 2
+        self._root.geometry(f"+{x}+{y}")
+
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+    def _on_apply(self) -> None:
+        try:
+            settings = self._read_settings()
+            validate_filter_parameters(
+                settings.filter_type, settings.cutoff,
+                self._sampling_frequency, settings.order,
             )
-            rb.pack(anchor=tk.W, pady=5)
-
-        # --- Sectiune 2: Parametri Generali ---
-        section2 = tk.LabelFrame(
-            main_frame,
-            text="2. Parametri Generali",
-            font=('Segoe UI', 11, 'bold'),
-            bg='#f5f5f5',
-            fg='#2c3e50',
-            padx=15,
-            pady=15
-        )
-        section2.pack(fill=tk.X, pady=(0, 20))
-
-        # Ordinul filtrului
-        order_frame = tk.Frame(section2, bg='#f5f5f5')
-        order_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            order_frame,
-            text="Ordinul Filtrului:",
-            font=('Segoe UI', 10),
-            bg='#f5f5f5',
-            width=20,
-            anchor='w'
-        ).pack(side=tk.LEFT)
-
-        order_spinbox = tk.Spinbox(
-            order_frame,
-            from_=2,
-            to=8,
-            increment=2,
-            textvariable=self.order_var,
-            font=('Segoe UI', 10),
-            width=10
-        )
-        order_spinbox.pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            order_frame,
-            text="(2-8, ordin mai mare = tranzitie mai ascutita)",
-            font=('Segoe UI', 8),
-            bg='#f5f5f5',
-            fg='#7f8c8d'
-        ).pack(side=tk.LEFT)
-
-        # --- Sectiune 3: Frecvente de Taiere ---
-        self.section3 = tk.LabelFrame(
-            main_frame,
-            text="3. Frecvente de Taiere",
-            font=('Segoe UI', 11, 'bold'),
-            bg='#f5f5f5',
-            fg='#2c3e50',
-            padx=15,
-            pady=15
-        )
-        self.section3.pack(fill=tk.X, pady=(0, 20))
-
-        # Frame pentru lowpass
-        self.lowpass_frame = tk.Frame(self.section3, bg='#f5f5f5')
-
-        tk.Label(
-            self.lowpass_frame,
-            text="Frecventa Taiere:",
-            font=('Segoe UI', 10),
-            bg='#f5f5f5',
-            width=20,
-            anchor='w'
-        ).pack(side=tk.LEFT)
-
-        tk.Entry(
-            self.lowpass_frame,
-            textvariable=self.lowpass_cutoff_var,
-            font=('Segoe UI', 10),
-            width=10
-        ).pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            self.lowpass_frame,
-            text="Hz (frecvente peste aceasta sunt eliminate)",
-            font=('Segoe UI', 8),
-            bg='#f5f5f5',
-            fg='#7f8c8d'
-        ).pack(side=tk.LEFT)
-
-        # Frame pentru highpass
-        self.highpass_frame = tk.Frame(self.section3, bg='#f5f5f5')
-
-        tk.Label(
-            self.highpass_frame,
-            text="Frecventa Taiere:",
-            font=('Segoe UI', 10),
-            bg='#f5f5f5',
-            width=20,
-            anchor='w'
-        ).pack(side=tk.LEFT)
-
-        tk.Entry(
-            self.highpass_frame,
-            textvariable=self.highpass_cutoff_var,
-            font=('Segoe UI', 10),
-            width=10
-        ).pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            self.highpass_frame,
-            text="Hz (frecvente sub aceasta sunt eliminate)",
-            font=('Segoe UI', 8),
-            bg='#f5f5f5',
-            fg='#7f8c8d'
-        ).pack(side=tk.LEFT)
-
-        # Frame pentru bandpass
-        self.bandpass_frame = tk.Frame(self.section3, bg='#f5f5f5')
-
-        bp_low_frame = tk.Frame(self.bandpass_frame, bg='#f5f5f5')
-        bp_low_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            bp_low_frame,
-            text="Frecventa Inferioara:",
-            font=('Segoe UI', 10),
-            bg='#f5f5f5',
-            width=20,
-            anchor='w'
-        ).pack(side=tk.LEFT)
-
-        tk.Entry(
-            bp_low_frame,
-            textvariable=self.bandpass_low_var,
-            font=('Segoe UI', 10),
-            width=10
-        ).pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            bp_low_frame,
-            text="Hz",
-            font=('Segoe UI', 8),
-            bg='#f5f5f5',
-            fg='#7f8c8d'
-        ).pack(side=tk.LEFT)
-
-        bp_high_frame = tk.Frame(self.bandpass_frame, bg='#f5f5f5')
-        bp_high_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            bp_high_frame,
-            text="Frecventa Superioara:",
-            font=('Segoe UI', 10),
-            bg='#f5f5f5',
-            width=20,
-            anchor='w'
-        ).pack(side=tk.LEFT)
-
-        tk.Entry(
-            bp_high_frame,
-            textvariable=self.bandpass_high_var,
-            font=('Segoe UI', 10),
-            width=10
-        ).pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            bp_high_frame,
-            text="Hz",
-            font=('Segoe UI', 8),
-            bg='#f5f5f5',
-            fg='#7f8c8d'
-        ).pack(side=tk.LEFT)
-
-        # Initial ascunde toate frame-urile de parametri
-        self.lowpass_frame.pack_forget()
-        self.highpass_frame.pack_forget()
-        self.bandpass_frame.pack_forget()
-
-        # --- Butoane ---
-        button_frame = tk.Frame(main_frame, bg='#f5f5f5')
-        button_frame.pack(fill=tk.X, pady=(20, 0))
-
-        apply_btn = tk.Button(
-            button_frame,
-            text="Aplica Filtrarea",
-            font=('Segoe UI', 12, 'bold'),
-            bg='#27ae60',
-            fg='white',
-            activebackground='#229954',
-            activeforeground='white',
-            cursor='hand2',
-            relief=tk.FLAT,
-            padx=30,
-            pady=15,
-            command=self.apply_filter
-        )
-        apply_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
-
-        cancel_btn = tk.Button(
-            button_frame,
-            text="Anuleaza",
-            font=('Segoe UI', 12),
-            bg='#95a5a6',
-            fg='white',
-            activebackground='#7f8c8d',
-            activeforeground='white',
-            cursor='hand2',
-            relief=tk.FLAT,
-            padx=30,
-            pady=15,
-            command=self.cancel
-        )
-        cancel_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
-
-    def on_filter_type_change(self):
-        """Handler pentru schimbarea tipului de filtru"""
-        filter_type = self.filter_type_var.get()
-
-        # Ascunde toate frame-urile
-        self.lowpass_frame.pack_forget()
-        self.highpass_frame.pack_forget()
-        self.bandpass_frame.pack_forget()
-
-        # Afiseaza frame-ul corespunzator
-        if filter_type == 'lowpass':
-            self.lowpass_frame.pack(fill=tk.X, pady=5)
-        elif filter_type == 'highpass':
-            self.highpass_frame.pack(fill=tk.X, pady=5)
-        elif filter_type == 'bandpass':
-            self.bandpass_frame.pack(fill=tk.X, pady=5)
-
-    def validate_inputs(self):
-        """Valideaza inputurile utilizatorului (validare de bază, fără Nyquist)"""
-        if not self.filter_type_var.get():
-            messagebox.showerror("Eroare", "Selecteaza un tip de filtru!")
-            return False
-
-        filter_type = self.filter_type_var.get()
-
-        # Validare de bază pentru bandpass
-        if filter_type == 'bandpass':
-            low = self.bandpass_low_var.get()
-            high = self.bandpass_high_var.get()
-
-            if low >= high:
-                messagebox.showerror("Eroare",
-                    "Frecventa inferioara trebuie sa fie mai mica decat frecventa superioara!")
-                return False
-
-        return True
-
-    def apply_filter(self):
-        """Handler pentru butonul Aplica"""
-        if not self.validate_inputs():
+        except ValueError as err:
+            messagebox.showerror("Invalid parameters", str(err), parent=self._root)
             return
+        self._result = settings
+        self._root.destroy()
 
-        self.selected_filter = self.filter_type_var.get()
+    def _on_cancel(self) -> None:
+        self._result = None
+        self._root.destroy()
 
-        # Colecteaza parametrii (fără sampling_freq)
-        self.filter_params = {
-            'filter_type': self.selected_filter,
-            'order': self.order_var.get(),
-        }
-
-        if self.selected_filter == 'lowpass':
-            self.filter_params['cutoff'] = self.lowpass_cutoff_var.get()
-        elif self.selected_filter == 'highpass':
-            self.filter_params['cutoff'] = self.highpass_cutoff_var.get()
-        elif self.selected_filter == 'bandpass':
-            self.filter_params['low_cutoff'] = self.bandpass_low_var.get()
-            self.filter_params['high_cutoff'] = self.bandpass_high_var.get()
-
-        self.root.destroy()
-
-    def cancel(self):
-        """Handler pentru butonul Anuleaza"""
-        self.selected_filter = None
-        self.root.destroy()
-
-    def run(self):
-        """Ruleaza interfata grafica"""
-        self.root.mainloop()
-        return self.selected_filter, self.filter_params
+    def _read_settings(self) -> FilterSettings:
+        """Parse the input fields; raise ValueError on non-numeric text."""
+        filter_type = self._filter_type.get()
+        order = _parse_int(self._order.get(), "Filter order")
+        if filter_type == "bandpass":
+            cutoff: Cutoff = (
+                _parse_float(self._bandpass_low.get(), "Lower cutoff"),
+                _parse_float(self._bandpass_high.get(), "Upper cutoff"),
+            )
+        elif filter_type == "highpass":
+            cutoff = _parse_float(self._highpass_cutoff.get(), "Cutoff")
+        else:
+            cutoff = _parse_float(self._lowpass_cutoff.get(), "Cutoff")
+        return FilterSettings(filter_type, cutoff, order)
 
 
-def get_filter_configuration(sampling_freq=None):
+def get_filter_settings(sampling_frequency: float) -> FilterSettings | None:
+    """Show the filter dialog and return the chosen settings.
+
+    Parameters
+    ----------
+    sampling_frequency : float
+        Sampling frequency of the loaded signal, in Hz. Used to suggest
+        default cutoffs and to validate the user's input.
+
+    Returns
+    -------
+    FilterSettings or None
+        The validated settings, or None if the user cancelled.
     """
-    Afiseaza GUI si returneaza configuratia aleasa
+    return FilterDialog(sampling_frequency).run()
 
-    Parameters:
-    sampling_freq : Frecventa de esantionare (optional, pentru afisare)
 
-    Returns:
-    filter_type, filter_params
-    """
-    gui = FilterGUI(sampling_freq)
-    return gui.run()
+def _parse_float(text: str, label: str) -> float:
+    """Parse a finite number, accepting a comma as the decimal separator."""
+    try:
+        value = float(text.strip().replace(",", "."))
+    except ValueError:
+        raise ValueError(f"{label} must be a number, got '{text}'") from None
+    if not math.isfinite(value):
+        raise ValueError(f"{label} must be a finite number, got '{text}'")
+    return value
+
+
+def _parse_int(text: str, label: str) -> int:
+    try:
+        return int(text.strip())
+    except ValueError:
+        raise ValueError(f"{label} must be a whole number, got '{text}'") from None

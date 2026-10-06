@@ -1,200 +1,220 @@
-"""
-Module pentru vizualizarea semnalelor si rezultatelor filtrarii
-"""
-import numpy as np
+"""Time- and frequency-domain plots comparing a signal before and after filtering."""
+
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
-from scipy import signal as sig
-import sys
-import os
+import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from scipy.signal import find_peaks
 
-# Adaugă rădăcina proiectului la sys.path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
+from signal_filtering import config
+from signal_filtering.validation import Cutoff
 
-import config
+# Spectral peaks smaller than this fraction of the largest one are not labelled.
+PEAK_LABEL_THRESHOLD = 0.2
+MAX_LABELLED_PEAKS = 5
 
 
-def plot_time_domain_comparison(time, original_signal, filtered_signal, filter_type, cutoff_info):
+def describe_filter(filter_type: str, cutoff: Cutoff, order: int) -> str:
+    """Return a one-line description, e.g. 'Band-pass filter, 20-80 Hz, order 4'."""
+    name = config.FILTER_TYPES[filter_type]
+    if filter_type == "bandpass":
+        low, high = cutoff
+        band = f"{low:g}-{high:g} Hz"
+    else:
+        band = f"cutoff {cutoff:g} Hz"
+    return f"{name} filter, {band}, order {order}"
+
+
+def amplitude_spectrum(
+    signal: np.ndarray, sampling_frequency: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the single-sided amplitude spectrum of a real signal.
+
+    The FFT output is scaled so that a sinusoid of amplitude A produces a
+    peak of height A, and a constant offset C appears as C at 0 Hz. This
+    makes the spectrum directly comparable with the time-domain signal.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        Real-valued input signal.
+    sampling_frequency : float
+        Sampling frequency, in Hz.
+
+    Returns
+    -------
+    frequencies : np.ndarray
+        Frequency of each bin, from 0 Hz up to the Nyquist frequency.
+    amplitudes : np.ndarray
+        Amplitude of each bin, in the units of the signal.
     """
-    Fereastra 1: Comparatie semnale in domeniul timp
+    n = len(signal)
+    # rfft returns only the non-negative frequencies of a real signal.
+    amplitudes = np.abs(np.fft.rfft(signal)) / n
+    # Each positive-frequency bin also carries the energy of its mirrored
+    # negative-frequency twin, so it is doubled. The DC bin has no twin,
+    # and neither does the Nyquist bin when n is even.
+    amplitudes[1:] *= 2
+    if n % 2 == 0:
+        amplitudes[-1] /= 2
+    frequencies = np.fft.rfftfreq(n, d=1 / sampling_frequency)
+    return frequencies, amplitudes
 
-    Parameters:
-    time : Vector timp
-    original_signal : Semnalul original
-    filtered_signal : Semnalul filtrat
-    filter_type : Tipul filtrului
-    cutoff_info : Informatii despre frecventele de taiere
+
+def plot_time_domain(
+    time: np.ndarray,
+    original: np.ndarray,
+    filtered: np.ndarray,
+    description: str,
+) -> Figure:
+    """Plot the original and filtered signals over time.
+
+    Three stacked panels share both axes, so amplitudes can be compared
+    directly: the original signal, the filtered signal, and an overlay.
+
+    Returns
+    -------
+    Figure
+        The created figure; call ``show_figures`` to display it.
     """
-    filter_names = {
-        'lowpass': 'Trece-Jos',
-        'highpass': 'Trece-Sus',
-        'bandpass': 'Trece-Banda'
-    }
-    filter_name_ro = filter_names.get(filter_type.lower(), filter_type)
+    fig, (ax_original, ax_filtered, ax_overlay) = plt.subplots(
+        3, 1, figsize=config.FIGURE_SIZE, dpi=config.DPI,
+        sharex=True, sharey=True, layout="constrained",
+    )
+    _set_window_title(fig, "Time Domain")
+    fig.suptitle(f"Time domain - {description}", fontsize=14, fontweight="bold")
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 10))
-    fig.canvas.manager.set_window_title('Analiza Temporala')
+    ax_original.plot(time, original, color=config.COLOR_ORIGINAL, linewidth=0.8)
+    ax_original.set_title("Original signal")
+    _add_statistics_box(ax_original, original)
 
-    # Titlu general
-    fig.suptitle(f'Analiza Domeniu Timp - Filtru {filter_name_ro}\n{cutoff_info}',
-                 fontsize=15, fontweight='bold')
+    ax_filtered.plot(time, filtered, color=config.COLOR_FILTERED, linewidth=1.0)
+    ax_filtered.set_title("Filtered signal")
+    _add_statistics_box(ax_filtered, filtered)
 
-    # Grafic 1: Semnal Original
-    ax1.plot(time, original_signal, color=config.COLOR_ORIGINAL, linewidth=1.5, alpha=0.8)
-    ax1.set_xlabel('Timp (secunde)', fontsize=11, fontweight='bold')
-    ax1.set_ylabel('Amplitudine', fontsize=11, fontweight='bold')
-    ax1.set_title('Semnal Original (inainte de filtrare)\nContine toate componentele de frecventa',
-                  fontsize=12, fontweight='bold', pad=10)
-    ax1.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax1.set_xlim(time[0], time[-1])
+    ax_overlay.plot(time, original, color=config.COLOR_ORIGINAL,
+                    linewidth=0.8, alpha=0.5, label="Original")
+    ax_overlay.plot(time, filtered, color=config.COLOR_FILTERED,
+                    linewidth=1.2, label="Filtered")
+    ax_overlay.set_title("Overlay")
+    ax_overlay.legend(loc="upper right")
+    ax_overlay.set_xlabel("Time (s)")
+    ax_overlay.set_xlim(time[0], time[-1])
 
-    # Statistici semnal original
-    mean_orig = np.mean(original_signal)
-    std_orig = np.std(original_signal)
-    ax1.text(0.02, 0.95, f'Media: {mean_orig:.4f}\nDeviatia std: {std_orig:.4f}',
-             transform=ax1.transAxes, fontsize=10, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    for ax in (ax_original, ax_filtered, ax_overlay):
+        ax.set_ylabel("Amplitude")
+        _style_axes(ax)
 
-    # Grafic 2: Semnal Filtrat
-    ax2.plot(time, filtered_signal, color=config.COLOR_FILTERED, linewidth=2)
-    ax2.set_xlabel('Timp (secunde)', fontsize=11, fontweight='bold')
-    ax2.set_ylabel('Amplitudine', fontsize=11, fontweight='bold')
-    ax2.set_title('Semnal Filtrat (dupa aplicarea filtrului)\nComponentele nedorite au fost eliminate',
-                  fontsize=12, fontweight='bold', pad=10)
-    ax2.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax2.set_xlim(time[0], time[-1])
-
-    # Statistici semnal filtrat
-    mean_filt = np.mean(filtered_signal)
-    std_filt = np.std(filtered_signal)
-    ax2.text(0.02, 0.95, f'Media: {mean_filt:.4f}\nDeviatia std: {std_filt:.4f}',
-             transform=ax2.transAxes, fontsize=10, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
-
-    # Grafic 3: Comparatie suprapusa
-    ax3.plot(time, original_signal, label='Semnal Original',
-             color=config.COLOR_ORIGINAL, linewidth=1.2, alpha=0.6)
-    ax3.plot(time, filtered_signal, label='Semnal Filtrat',
-             color=config.COLOR_FILTERED, linewidth=2.5)
-    ax3.set_xlabel('Timp (secunde)', fontsize=11, fontweight='bold')
-    ax3.set_ylabel('Amplitudine', fontsize=11, fontweight='bold')
-    ax3.set_title('Comparatie Directa: Original (transparent) vs Filtrat (solid)\nObserva diferentele de amplitudine si netezire',
-                  fontsize=12, fontweight='bold', pad=10)
-    ax3.legend(loc='upper right', fontsize=11, framealpha=0.9)
-    ax3.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax3.set_xlim(time[0], time[-1])
-
-    # Stilizare
-    for ax in [ax1, ax2, ax3]:
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_linewidth(1.5)
-        ax.spines['bottom'].set_linewidth(1.5)
-
-    plt.tight_layout()
-    plt.show(block=False)
+    return fig
 
 
-def plot_frequency_domain_comparison(time, original_signal, filtered_signal, sampling_freq,
-                                     filter_type, cutoff_info):
+def plot_frequency_domain(
+    original: np.ndarray,
+    filtered: np.ndarray,
+    sampling_frequency: float,
+    description: str,
+    cutoff: Cutoff | None = None,
+) -> Figure:
+    """Plot the amplitude spectra of the original and filtered signals.
+
+    Three stacked panels share both axes: the original spectrum (with its
+    dominant peaks labelled), the filtered spectrum, and an overlay. If
+    ``cutoff`` is given, the cutoff frequencies are marked on every panel.
+
+    Returns
+    -------
+    Figure
+        The created figure; call ``show_figures`` to display it.
     """
-    Fereastra 2: Analiza spectru de frecventa (FFT)
+    frequencies, original_spectrum = amplitude_spectrum(original, sampling_frequency)
+    _, filtered_spectrum = amplitude_spectrum(filtered, sampling_frequency)
 
-    Parameters:
-    -----------
-    time : Vector timp
-    original_signal : Semnalul original
-    filtered_signal : Semnalul filtrat
-    sampling_freq : Frecventa de esantionare
-    filter_type : Tipul filtrului
-    cutoff_info : Informatii despre frecventele de taiere
-    """
-    filter_names = {
-        'lowpass': 'Trece-Jos',
-        'highpass': 'Trece-Sus',
-        'bandpass': 'Trece-Banda'
-    }
-    filter_name_ro = filter_names.get(filter_type.lower(), filter_type)
+    fig, (ax_original, ax_filtered, ax_overlay) = plt.subplots(
+        3, 1, figsize=config.FIGURE_SIZE, dpi=config.DPI,
+        sharex=True, sharey=True, layout="constrained",
+    )
+    _set_window_title(fig, "Frequency Domain")
+    fig.suptitle(f"Frequency domain - {description}", fontsize=14, fontweight="bold")
 
-    # Calcul FFT
-    n = len(original_signal)
-    freq = np.fft.fftfreq(n, d=1/sampling_freq)
-    fft_original = np.fft.fft(original_signal)
-    fft_filtered = np.fft.fft(filtered_signal)
+    ax_original.plot(frequencies, original_spectrum,
+                     color=config.COLOR_ORIGINAL, linewidth=1.0)
+    ax_original.set_title("Original spectrum")
+    _label_peaks(ax_original, frequencies, original_spectrum)
 
-    # Pastreaza doar frecventele pozitive
-    positive_freq_idx = freq > 0
-    freq_pos = freq[positive_freq_idx]
-    fft_mag_original = np.abs(fft_original[positive_freq_idx])
-    fft_mag_filtered = np.abs(fft_filtered[positive_freq_idx])
+    ax_filtered.plot(frequencies, filtered_spectrum,
+                     color=config.COLOR_FILTERED, linewidth=1.0)
+    ax_filtered.set_title("Filtered spectrum")
 
-    # Creaza figura
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 10))
-    fig.canvas.manager.set_window_title('Analiza Spectrala (FFT)')
+    ax_overlay.plot(frequencies, original_spectrum, color=config.COLOR_ORIGINAL,
+                    linewidth=1.0, alpha=0.5, label="Original")
+    ax_overlay.plot(frequencies, filtered_spectrum, color=config.COLOR_FILTERED,
+                    linewidth=1.2, label="Filtered")
+    ax_overlay.set_title("Overlay")
+    ax_overlay.set_xlabel("Frequency (Hz)")
 
-    fig.suptitle(f'Analiza Spectru de Frecventa (FFT) - Filtru {filter_name_ro}\n{cutoff_info}',
-                 fontsize=15, fontweight='bold')
+    nyquist = sampling_frequency / 2
+    # A small left margin keeps the 0 Hz (DC) bin visible instead of hidden
+    # behind the y-axis.
+    ax_overlay.set_xlim(-0.01 * nyquist, nyquist)
 
-    # Grafic 1: Spectru Original
-    ax1.plot(freq_pos, fft_mag_original, color=config.COLOR_ORIGINAL, linewidth=1.5)
-    ax1.set_xlabel('Frecventa (Hz)', fontsize=11, fontweight='bold')
-    ax1.set_ylabel('Magnitudine (Amplitudine FFT)', fontsize=11, fontweight='bold')
-    ax1.set_title('Spectru de Frecventa Original\nArata toate componentele de frecventa prezente in semnal',
-                  fontsize=12, fontweight='bold', pad=10)
-    ax1.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax1.set_xlim(0, sampling_freq / 2)
+    for ax in (ax_original, ax_filtered, ax_overlay):
+        if cutoff is not None:
+            _mark_cutoffs(ax, cutoff)
+        ax.set_ylabel("Amplitude")
+        _style_axes(ax)
+    # Created after the cutoff lines so the legend includes them.
+    ax_overlay.legend(loc="upper right")
 
-    # Gaseste frecventele dominante in spectrul original
-    dominant_freqs_idx = np.argsort(fft_mag_original)[-3:]  # Top 3 frecvente
-    for idx in dominant_freqs_idx:
-        if fft_mag_original[idx] > np.max(fft_mag_original) * 0.3:  # Doar daca semnificative
-            ax1.axvline(x=freq_pos[idx], color='red', linestyle=':', alpha=0.5, linewidth=1)
-            ax1.text(freq_pos[idx], fft_mag_original[idx], f'{freq_pos[idx]:.1f} Hz',
-                    fontsize=9, rotation=90, verticalalignment='bottom')
-
-    # Grafic 2: Spectru Filtrat
-    ax2.plot(freq_pos, fft_mag_filtered, color=config.COLOR_FILTERED, linewidth=1.5)
-    ax2.set_xlabel('Frecventa (Hz)', fontsize=11, fontweight='bold')
-    ax2.set_ylabel('Magnitudine (Amplitudine FFT)', fontsize=11, fontweight='bold')
-    ax2.set_title('Spectru de Frecventa Filtrat\nComponentele nedorite au fost atenuate/eliminate',
-                  fontsize=12, fontweight='bold', pad=10)
-    ax2.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax2.set_xlim(0, sampling_freq / 2)
-
-    # Grafic 3: Comparatie suprapusa
-    ax3.plot(freq_pos, fft_mag_original, label='Spectru Original',
-             color=config.COLOR_ORIGINAL, linewidth=1.2, alpha=0.6)
-    ax3.plot(freq_pos, fft_mag_filtered, label='Spectru Filtrat',
-             color=config.COLOR_FILTERED, linewidth=2.5)
-    ax3.set_xlabel('Frecventa (Hz)', fontsize=11, fontweight='bold')
-    ax3.set_ylabel('Magnitudine (Amplitudine FFT)', fontsize=11, fontweight='bold')
-    ax3.set_title('Comparatie Spectrala: Inainte si Dupa Filtrare\nObserva cum anumite frecvente au fost eliminate',
-                  fontsize=12, fontweight='bold', pad=10)
-    ax3.legend(loc='upper right', fontsize=11, framealpha=0.9)
-    ax3.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax3.set_xlim(0, sampling_freq / 2)
-
-    # Text explicativ
-    ax3.text(0.02, 0.95,
-             'FFT (Fast Fourier Transform) descompune semnalul\nin componentele sale de frecventa',
-             transform=ax3.transAxes, fontsize=10, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.8))
-
-    # Stilizare
-    for ax in [ax1, ax2, ax3]:
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_linewidth(1.5)
-        ax.spines['bottom'].set_linewidth(1.5)
-
-    plt.tight_layout()
-    plt.show(block=False)
+    return fig
 
 
-
-
-def show_all_plots():
-    """
-    Afișează toate graficele și blochează execuția până la închidere
-    """
+def show_figures() -> None:
+    """Display all open figures, blocking until the user closes them."""
     plt.show()
+
+
+def _set_window_title(fig: Figure, title: str) -> None:
+    # Non-interactive backends (e.g. when saving to file) have no window.
+    manager = fig.canvas.manager
+    if manager is not None:
+        manager.set_window_title(title)
+
+
+def _add_statistics_box(ax: Axes, signal: np.ndarray) -> None:
+    """Show the mean (DC level) and standard deviation in a corner of the axes."""
+    ax.text(
+        0.01, 0.95,
+        f"Mean: {np.mean(signal):.4f}\nStd: {np.std(signal):.4f}",
+        transform=ax.transAxes, fontsize=9, verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
+
+
+def _label_peaks(ax: Axes, frequencies: np.ndarray, spectrum: np.ndarray) -> None:
+    """Annotate the strongest local maxima of a spectrum with their frequency."""
+    threshold = PEAK_LABEL_THRESHOLD * spectrum.max()
+    peaks, properties = find_peaks(spectrum, height=threshold)
+    strongest = peaks[np.argsort(properties["peak_heights"])[::-1][:MAX_LABELLED_PEAKS]]
+    for index in strongest:
+        ax.annotate(
+            f"{frequencies[index]:g} Hz",
+            xy=(frequencies[index], spectrum[index]),
+            xytext=(0, 4), textcoords="offset points",
+            ha="center", va="bottom", fontsize=9,
+        )
+
+
+def _mark_cutoffs(ax: Axes, cutoff: Cutoff) -> None:
+    """Draw dashed vertical lines at the cutoff frequency or frequencies."""
+    cutoffs = cutoff if isinstance(cutoff, (tuple, list)) else (cutoff,)
+    for i, frequency in enumerate(cutoffs):
+        ax.axvline(frequency, color="gray", linestyle="--", linewidth=1,
+                   label="Cutoff" if i == 0 else None)
+
+
+def _style_axes(ax: Axes) -> None:
+    ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
