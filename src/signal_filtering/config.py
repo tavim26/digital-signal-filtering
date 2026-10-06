@@ -1,22 +1,42 @@
-"""
-Configurari globale pentru proiectul de filtrare semnale digitale
-"""
-import os
+"""Project-wide configuration: paths, default parameters and plot styling."""
 
-# Directoare proiect
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA_RAW_DIR = os.path.join(PROJECT_ROOT, 'data', 'raw')
-DATA_PROCESSED_DIR = os.path.join(PROJECT_ROOT, 'data', 'processed')
+from pathlib import Path
 
-# Parametri impliciti pentru filtre
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+# This file lives in <repo>/src/signal_filtering/, so the repository root
+# is two levels above its parent directory.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_RAW_DIR = PROJECT_ROOT / "data" / "raw"
+DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+DEFAULT_INPUT_FILE = DATA_RAW_DIR / "test_signal.csv"
+
+# ---------------------------------------------------------------------------
+# Test signal generation
+# ---------------------------------------------------------------------------
+DEFAULT_SAMPLING_FREQUENCY = 1000.0  # Hz
+DEFAULT_DURATION = 2.0               # seconds
+
+# ---------------------------------------------------------------------------
+# Filter defaults
+# ---------------------------------------------------------------------------
 DEFAULT_FILTER_ORDER = 4
-DEFAULT_SAMPLING_FREQUENCY = 1000  # Hz
+MIN_FILTER_ORDER = 1
+MAX_FILTER_ORDER = 10
 
-# Parametri vizualizare
-FIGURE_SIZE = (14, 8)
+# Default cutoffs, expressed as fractions of the Nyquist frequency so they
+# remain valid for any sampling rate loaded from a file.
+DEFAULT_LOWPASS_CUTOFF_RATIO = 0.10
+DEFAULT_HIGHPASS_CUTOFF_RATIO = 0.02
+DEFAULT_BANDPASS_LOW_RATIO = 0.04
+DEFAULT_BANDPASS_HIGH_RATIO = 0.16
+
+# ---------------------------------------------------------------------------
+# Plot styling
+# ---------------------------------------------------------------------------
+FIGURE_SIZE = (14, 9)  # inches
 DPI = 100
 
-# Culori pentru grafice
-COLOR_ORIGINAL = '#2E86AB'
-COLOR_FILTERED = '#A23B72'
-COLOR_SPECTRUM = '#F18F01'
+COLOR_ORIGINAL = "#2E86AB"
+COLOR_FILTERED = "#A23B72"
