@@ -1,119 +1,164 @@
-"""
-Module pentru incarcarea datelor din fisiere CSV
-"""
-import pandas as pd
-import numpy as np
+"""Reading and writing time-domain signals stored as CSV files."""
+
+from __future__ import annotations
+
 from pathlib import Path
+from typing import NamedTuple
+
+import numpy as np
+import pandas as pd
+
+# Column names used when writing signals to disk.
+TIME_COLUMN_NAME = "time"
+SIGNAL_COLUMN_NAME = "signal"
+
+# Maximum relative deviation of any sampling interval from the mean interval
+# before the signal is rejected as non-uniformly sampled. IIR filters assume
+# a constant sampling rate, so irregular timestamps would give wrong results.
+UNIFORM_SAMPLING_TOLERANCE = 0.01
 
 
-def load_signal_from_csv(filepath, time_column=0, signal_column=1, delimiter=','):
+class SignalData(NamedTuple):
+    """A uniformly sampled signal loaded from disk."""
+
+    time: np.ndarray
+    values: np.ndarray
+    sampling_frequency: float
+
+
+def load_signal_from_csv(
+    filepath: str | Path,
+    time_column: int | str = 0,
+    signal_column: int | str = 1,
+    delimiter: str = ",",
+) -> SignalData:
+    """Load a uniformly sampled signal from a CSV file.
+
+    The sampling frequency is derived from the time column.
+
+    Parameters
+    ----------
+    filepath : str or Path
+        Path to the CSV file. The first row must be a header.
+    time_column : int or str, default 0
+        Index or name of the column holding the timestamps, in seconds.
+    signal_column : int or str, default 1
+        Index or name of the column holding the signal values.
+    delimiter : str, default ","
+        Field separator used in the file.
+
+    Returns
+    -------
+    SignalData
+        Timestamps, signal values and the sampling frequency in Hz.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If the file is not a CSV, cannot be parsed, has missing or
+        non-numeric values, has fewer than two samples, or is not
+        uniformly sampled.
     """
-    Incarca semnal din fisier CSV
-
-    """
-    # CONVERSIE LA PATH OBJECT
-    # ------------------------
-    # Path() din pathlib ofera metode utile pentru manipulare fisiere
-    file_path = Path(filepath)
-
-    # VALIDARE EXISTENTA FISIER
-    # -------------------------
-    # Verifica daca fisierul exista pe disc inainte de a incerca citirea
-    # Previne erori confuze de la pandas
-    if not file_path.exists():
-        raise FileNotFoundError(f"Fisierul nu exista: {filepath}")
-
-    # VALIDARE EXTENSIE FISIER
-    # ------------------------
-    # Verifica ca fisierul are extensia .csv
-    if file_path.suffix.lower() != '.csv':
-        raise ValueError(f"Fisierul trebuie sa fie .csv, nu {file_path.suffix}")
+    path = Path(filepath)
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+    if path.suffix.lower() != ".csv":
+        raise ValueError(f"Expected a .csv file, got '{path.suffix}'")
 
     try:
-        # CITIRE FISIER CSV
-        # -----------------
-        # pandas.read_csv() citeste fisierul si il transforma in DataFrame
-        # DataFrame = tabel cu randuri si coloane, similar cu Excel
-        df = pd.read_csv(filepath, delimiter=delimiter)
+        df = pd.read_csv(path, delimiter=delimiter)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError) as err:
+        raise ValueError(f"Could not parse CSV file '{path.name}': {err}") from err
 
-        # EXTRAGERE COLOANA TIMP
-        # ----------------------
-        # Suporta 2 moduri de selectie:
-        # 1. Index numeric (ex: 0 = prima coloana)
-        # 2. Nume coloana (ex: "timp", "time", etc.)
-        if isinstance(time_column, int):
-            # .iloc[:, index] = selecteaza toate randurile (:) din coloana index
-            # .values = converteste din pandas Series in numpy array
-            time = df.iloc[:, time_column].values
-        else:
-            # df[nume_coloana] = selecteaza coloana dupa nume
-            time = df[time_column].values
+    time = _extract_numeric_column(df, time_column, "time")
+    values = _extract_numeric_column(df, signal_column, "signal")
 
-        # EXTRAGERE COLOANA SEMNAL
-        # ------------------------
-        # Acelasi mecanism ca pentru coloana timp
-        # Rezultat: numpy array cu valorile semnalului
-        if isinstance(signal_column, int):
-            signal = df.iloc[:, signal_column].values
-        else:
-            signal = df[signal_column].values
+    if len(time) < 2:
+        raise ValueError(f"At least 2 samples are required, found {len(time)}")
 
-        # CALCUL FRECVENTA DE ESANTIONARE
-        # --------------------------------
-        # Pasul 1: Calculeaza diferentele dintre timpi consecutivi
-        # np.diff([0.000, 0.001, 0.002]) = [0.001, 0.001]
-        # Aceasta este perioada de esantionare (Ts sau dt)
-        time_diff = np.diff(time)
-
-        # Pasul 2: Calculeaza perioada medie de esantionare
-        # Daca esantionarea este uniforma, toate valorile din time_diff sunt egale
-        # Media elimina eventuale erori mici de rotunjire
-        avg_time_step = np.mean(time_diff)
-
-        # Pasul 3: Calculeaza frecventa de esantionare
-        # Formula: fs = 1 / Ts
-        # Exemplu: daca Ts = 0.001 s => fs = 1000 Hz
-        # Protectie: daca avg_time_step = 0 (date invalide), returneaza 1.0 Hz implicit
-        sampling_frequency = 1.0 / avg_time_step if avg_time_step > 0 else 1.0
-
-        # AFISARE INFORMATII
-        print(f"Incarcat fisier CSV: {file_path.name}")
-        print(f"  - Numar esantioane: {len(signal)}")
-        print(f"  - Frecventa esantionare: {sampling_frequency:.2f} Hz")
-
-        # RETURNARE DATE
-        # --------------
-        # time: vector cu timpii de esantionare
-        # signal: vector cu valorile semnalului
-        # sampling_frequency: frecventa calculata automat
-        return time, signal, sampling_frequency
-
-    except Exception as e:
-        # GESTIONARE ERORI
-        raise Exception(f"Eroare la citirea fisierului CSV: {str(e)}")
+    sampling_frequency = _estimate_sampling_frequency(time)
+    return SignalData(time, values, sampling_frequency)
 
 
-def save_signal(filepath, time, signal):
+def save_signal_to_csv(
+    filepath: str | Path,
+    time: np.ndarray,
+    values: np.ndarray,
+) -> Path:
+    """Write a signal to a CSV file with 'time' and 'signal' columns.
+
+    Missing parent directories are created automatically.
+
+    Parameters
+    ----------
+    filepath : str or Path
+        Destination file.
+    time : np.ndarray
+        Timestamps, in seconds.
+    values : np.ndarray
+        Signal values; must have the same length as ``time``.
+
+    Returns
+    -------
+    Path
+        The path of the written file.
+
+    Raises
+    ------
+    ValueError
+        If ``time`` and ``values`` have different lengths.
     """
-    Salveaza semnalul intr-un fisier CSV
+    if len(time) != len(values):
+        raise ValueError(
+            f"Length mismatch: {len(time)} timestamps vs {len(values)} values"
+        )
 
-    """
-    # CREARE DATAFRAME
-    # ----------------
-    # Construieste un tabel pandas cu 2 coloane: 'timp' si 'semnal'
-    # Dicionar: cheile devin numele coloanelor, valorile devin datele
-
-    df = pd.DataFrame({
-        'timp': time,
-        'semnal': signal
-    })
-
-    # SALVARE IN FISIER CSV
-    # ---------------------
-    # .to_csv() scrie DataFrame-ul in fisier
-    # Rezultat: fisier CSV cu header (timp,semnal) si date
-    df.to_csv(filepath, index=False)
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({TIME_COLUMN_NAME: time, SIGNAL_COLUMN_NAME: values}).to_csv(
+        path, index=False
+    )
+    return path
 
 
-    print(f"Semnal salvat: {Path(filepath).name}")
+def _extract_numeric_column(
+    df: pd.DataFrame, column: int | str, label: str
+) -> np.ndarray:
+    """Return a column as a float array, rejecting missing or non-numeric data."""
+    try:
+        series = df.iloc[:, column] if isinstance(column, int) else df[column]
+    except (IndexError, KeyError) as err:
+        raise ValueError(
+            f"{label.capitalize()} column {column!r} not found; "
+            f"available columns: {list(df.columns)}"
+        ) from err
 
+    values = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
+
+    invalid_rows = np.flatnonzero(np.isnan(values))
+    if invalid_rows.size:
+        # +2 converts a 0-based data row index into a 1-based file line
+        # number, accounting for the header line.
+        raise ValueError(
+            f"{label.capitalize()} column contains {invalid_rows.size} missing "
+            f"or non-numeric value(s), first at line {invalid_rows[0] + 2}"
+        )
+    return values
+
+
+def _estimate_sampling_frequency(time: np.ndarray) -> float:
+    """Derive the sampling frequency from timestamps, checking uniformity."""
+    intervals = np.diff(time)
+    if np.any(intervals <= 0):
+        raise ValueError("Time values must be strictly increasing")
+
+    mean_interval = intervals.mean()
+    max_deviation = np.max(np.abs(intervals - mean_interval)) / mean_interval
+    if max_deviation > UNIFORM_SAMPLING_TOLERANCE:
+        raise ValueError(
+            "Signal is not uniformly sampled: sampling intervals deviate by up "
+            f"to {max_deviation:.1%} from the mean"
+        )
+    return 1.0 / mean_interval
